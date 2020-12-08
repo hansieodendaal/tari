@@ -41,8 +41,8 @@ Notes:
   |---config
   |       windows.toml
   |---runtime
-          get-openssl-win.ps1
-          get-xmrig-win.ps1
+          get_openssl_win.ps1
+          get_xmrig_win.ps1
           install_openssl.bat
           install_sqlite.bat
           install_tor_services.bat

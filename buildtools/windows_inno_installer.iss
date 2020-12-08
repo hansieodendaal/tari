@@ -109,9 +109,9 @@ Source: "install_sqlite.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_tor_services.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_vs2019_redist.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_openssl.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "get-openssl-win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "get_openssl_win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "install_xmrig.bat"; DestDir: "{app}\runtime"; Flags: ignoreversion
-Source: "get-xmrig-win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
+Source: "get_xmrig_win.ps1"; DestDir: "{app}\runtime"; Flags: ignoreversion
 Source: "..\common\xmrig_config\config_example.json"; DestDir: "{app}\config"; DestName: "config_xmrig.json"; Flags: ignoreversion
 
 [Icons]
