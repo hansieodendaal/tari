@@ -8,7 +8,7 @@ const dateFormat = require('dateformat');
 class BaseNodeProcess {
     constructor(name, nodeFile) {
         this.name = name;
-        this.nodeFile= nodeFile;
+        this.nodeFile = nodeFile;
         // this.port = getFreePort(19000, 20000);
         // this.grpcPort = getFreePort(50000, 51000);
         // this.name = `Basenode${this.port}-${name}`;
@@ -20,14 +20,14 @@ class BaseNodeProcess {
 
 
     async init() {
-                this.port = await getFreePort(19000, 20000);
-                this.grpcPort = await getFreePort(50000, 51000);
-                this.name = `Basenode${this.port}-${this.name}`;
-                this.nodeFile = this.nodeFile || "newnode_id.json";
-                this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
-                // console.log("POrt:", this.port);
-                // console.log("GRPC:", this.grpcPort);
-        console.log(`Starting node ${this.name}...`);
+        this.port = await getFreePort(19000, 20000);
+        this.grpcPort = await getFreePort(50000, 51000);
+        this.name = `Basenode${this.port}-${this.name}`;
+        this.nodeFile = this.nodeFile || "newnode_id.json";
+        this.baseDir = `./temp/base_nodes/${dateFormat(new Date(), "yyyymmddHHMM")}/${this.name}`;
+        // console.log("POrt:", this.port);
+        // console.log("GRPC:", this.grpcPort);
+        // console.log(`Starting node ${this.name}...`);
         await this.run("cargo",
 
             ["run", "--bin", "tari_base_node", "--", "--base-path", ".", "--create-id", "--init"]);
@@ -77,7 +77,7 @@ class BaseNodeProcess {
             TARI_BASE_NODE__LOCALNET__TRANSPORT: "tcp",
             TARI_BASE_NODE__LOCALNET__TCP_LISTENER_ADDRESS: "/ip4/0.0.0.0/tcp/" + this.port,
             TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: true,
-            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/10.0.0.103/tcp/" + this.port,
+            TARI_BASE_NODE__LOCALNET__PUBLIC_ADDRESS: "/ip4/127.0.0.1/tcp/" + this.port,
             TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: "true",
             TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
             TARI_BASE_NODE__LOCALNET__GRPC_BASE_NODE_ADDRESS: "127.0.0.1:" + this.grpcPort,
@@ -96,12 +96,17 @@ class BaseNodeProcess {
             TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_HOST_ADDRESS: "127.0.0.1:50071",
             TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
             TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
-            TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20
+            TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
+            TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false
             // Speeder peer selection
             // TARI_BASE_NODE__LOCALNET__CONNECTIVITY_UPDATE_INTERVAL: 10
         };
         if (this.peerSeeds) {
             envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = this.peerSeeds;
+        }else {
+            //  Nowheresville
+            envs.TARI_BASE_NODE__LOCALNET__PEER_SEEDS = ["5cfcf17f41b01980eb4fa03cec5ea12edbd3783496a2b5dabf99e4bf6410f460::/ip4/10.0.0.50/tcp/1"]
+
         }
         return envs;
     }
@@ -146,7 +151,7 @@ class BaseNodeProcess {
             });
 
             ps.stderr.on('data', (data) => {
-               // console.error(`stderr: ${data}`);
+                // console.error(`stderr: ${data}`);
                 fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
             });
 
@@ -175,7 +180,7 @@ class BaseNodeProcess {
     }
 
     start() {
-        return this.run("cargo", ["run","--bin tari_base_node", "--", "--base-path", "."]);
+        return this.run("cargo", ["run", "--bin tari_base_node", "--", "--base-path", "."]);
     }
 
     stop() {
