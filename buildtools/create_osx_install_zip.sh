@@ -23,8 +23,8 @@ mkdir "${tarball_folder}/config"
 mkdir "${tarball_folder}/runtime"
 
 local_dir="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-project_dir="$(dirname "$(readlink -e "$local_dir")")"
-app_dir="$(dirname "$(readlink -e "$project_dir/applications/tari_base_node")")"
+project_dir="$(dirname "$(greadlink -e "$local_dir")")"
+app_dir="$(dirname "$(greadlink -e "$project_dir/applications/tari_base_node")")"
 
 if [ ! "${app_dir}" == "${project_dir}/applications" ]
 then
