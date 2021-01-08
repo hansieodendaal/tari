@@ -43,7 +43,7 @@ mining() {
     echo "Merged mining?"
     select yn in "Yes" "No"; do
         case $yn in
-            Yes ) export sha3_mining = 0; merged_mining; break;;
+            Yes ) export sha3_mining=0; merged_mining; break;;
             No ) call_base_node; call_console_wallet; exit;;
             * ) echo "Please answer yes or no.";;
         esac
@@ -54,7 +54,7 @@ echo "Do you want to enable mining?"
 select yn in "Yes" "No"; do
     case $yn in
         Yes ) mining; break;;
-        No ) export sha3_mining = 0; call_base_node; call_console_wallet; exit;;
+        No ) export sha3_mining=0; call_base_node; call_console_wallet; exit;;
         * ) echo "Please answer yes or no.";;
     esac
 done

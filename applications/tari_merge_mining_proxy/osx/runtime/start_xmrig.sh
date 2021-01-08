@@ -29,6 +29,6 @@ else
     cp -f "${config_path}/config_xmrig.json" "${xmrig_folder}/config.json"
     # Run
     echo Spawning XMRig into new terminal..
-    open "${xmrig_folder}/${xmrig_runtime}"
+    open -a terminal "${xmrig_folder}/${xmrig_runtime}"
     echo
 fi

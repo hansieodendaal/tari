@@ -16,7 +16,7 @@ local_dir="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 found=$(which pwsh)
 if [ -z "${found}" ]
 then
-    if [ ! "$(uname)" == "Darwin" ]
+    if [ "$(uname)" == "Darwin" ]
     then
         brew install --cask powershell
     else
@@ -25,11 +25,19 @@ then
 fi
 
 rm -f "/tmp/${xmrig_zip}"
-pwsh -command "${local_dir}/get_xmrig_ubuntu.ps1"
+
+if [ "$(uname)" == "Darwin" ]
+then
+    pwsh -command "${local_dir}/get_xmrig_osx.ps1"
+else
+    pwsh -command "${local_dir}/get_xmrig_ubuntu.ps1"
+fi
+
 if [ -d "${xmrig_folder}" ]
 then
     rm -f -r "${xmrig_folder:?}"
 fi
+
 mkdir "${xmrig_folder}"
 tar -xvf "/tmp/${xmrig_zip}" -C ${xmrig_folder} > /dev/null
 pwsh -command "Get-Childitem -File -Recurse '${xmrig_folder}/' | Move-Item  -Force -Destination '${xmrig_folder}'"
