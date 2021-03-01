@@ -169,8 +169,8 @@ impl Default for DhtConfig {
             network_discovery: Default::default(),
             ban_duration: Duration::from_secs(6 * 60 * 60),
             allow_test_addresses: false,
-            flood_ban_max_msg_count: 1000,
-            flood_ban_timespan: Duration::from_secs(100),
+            flood_ban_max_msg_count: 50000,
+            flood_ban_timespan: Duration::from_secs(60),
             offline_peer_cooldown: Duration::from_secs(24 * 60 * 60),
         }
     }

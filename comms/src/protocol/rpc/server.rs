@@ -143,7 +143,7 @@ impl RpcServer {
 impl Default for RpcServer {
     fn default() -> Self {
         Self {
-            maximum_concurrent_sessions: Some(100),
+            maximum_concurrent_sessions: Some(25000),
             max_frame_size: RPC_MAX_FRAME_SIZE,
             minimum_client_deadline: Duration::from_secs(1),
             handshake_timeout: Duration::from_secs(15),
@@ -225,7 +225,7 @@ where
                 match self.try_spawn_service(notification.protocol, node_id, framed).await {
                     Ok(_) => {},
                     Err(err) => {
-                        debug!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
+                        error!(target: LOG_TARGET, "Unable to spawn RPC service: {}", err);
                     },
                 }
             },

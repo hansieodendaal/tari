@@ -77,7 +77,10 @@ where T: AsyncRead + AsyncWrite + Unpin
             },
             Ok(Some(Err(err))) => Err(err.into()),
             Ok(None) => Err(RpcError::ClientClosed),
-            Err(_elapsed) => Err(RpcError::NegotiationTimedOut),
+            Err(e) => {
+                error!(target: LOG_TARGET, "Server handshake: {:?}", e);
+                Err(RpcError::NegotiationTimedOut)
+            },
         }
     }
 
@@ -98,7 +101,10 @@ where T: AsyncRead + AsyncWrite + Unpin
             },
             Ok(Some(Err(err))) => Err(err.into()),
             Ok(None) => Err(RpcError::ServerClosedRequest),
-            Err(_) => Err(RpcError::NegotiationTimedOut),
+            Err(err) => {
+                error!(target: LOG_TARGET, "Client handshake: {:?}", err);
+                Err(RpcError::NegotiationTimedOut)
+            },
         }
     }
 

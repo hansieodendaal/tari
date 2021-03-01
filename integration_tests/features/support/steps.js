@@ -81,6 +81,20 @@ Given('I have {int} base nodes connected to all seed nodes', {timeout: 190*1000}
     await Promise.all(promises);
 });
 
+Given(/I have stress-test wallet (.*) connected to the seed node (.*) with broadcast monitoring timeout (.*)/, {timeout: 20*1000}, async function (walletName, seedName, timeout) {
+    let wallet = new WalletProcess(walletName, { broadcastMonitoringTimeout: timeout });
+    wallet.setPeerSeeds([this.seeds[seedName].peerAddress()]);
+    await wallet.startNew();
+    this.addWallet(walletName, wallet);
+});
+
+Given(/I have stress-test wallet (.*) connected to all the seed nodes with broadcast monitoring timeout (.*)/, {timeout: 20*1000}, async function (name, timeout) {
+    let wallet = new WalletProcess(name, { broadcastMonitoringTimeout: timeout });
+    wallet.setPeerSeeds([this.seedAddresses()]);
+    await wallet.startNew();
+    this.addWallet(name, wallet);
+});
+
 Given(/I have wallet (.*) connected to seed node (.*)/, {timeout: 20*1000}, async function (walletName, seedName) {
     let wallet = new WalletProcess(walletName);
     wallet.setPeerSeeds([this.seeds[seedName].peerAddress()]);
@@ -148,11 +162,22 @@ Then(/node (.*) is at height (\d+)/, {timeout: 120*1000}, async function (name, 
     expect(await client.getTipHeight()).to.equal(height);
 });
 
-Then('all nodes are at height {int}', {timeout: 120*1000},async function (height) {
+Then('all nodes are at height {int}', {timeout: 1200*1000},async function (height) {
     await this.forEachClientAsync(async (client, name) => {
-        await waitFor(async() => client.getTipHeight(), height, 115*1000);
+        await waitFor(async() => client.getTipHeight(), height, 1150*1000);
         const currTip = await client.getTipHeight();
         console.log(`Node ${name} is at tip: ${currTip} (should be ${height})`);
+        expect(currTip).to.equal(height);
+    })
+});
+
+Then('all nodes are at current tip height', {timeout: 1200*1000},async function () {
+    let height = parseInt(this.tipHeight);
+    console.log("Wait for all nodes to reach height of", height);
+    await this.forEachClientAsync(async (client, name) => {
+        await waitFor(async() => client.getTipHeight(), height, 1200*1000);
+        const currTip = await client.getTipHeight();
+        console.log(`Node ${name} is at tip: ${currTip} (should be`, height, `)`);
         expect(currTip).to.equal(height);
     })
 });
@@ -222,6 +247,22 @@ When(/I mine (\d+) blocks on (.*)/, {timeout: 600*1000}, async function (numBloc
     for(let i=0;i<numBlocks;i++) {
         await this.mineBlock(name);
     }
+    this.tipHeight += parseInt(numBlocks);
+});
+
+When(/I sync mine (\d+) blocks on (.*)/, {timeout: 1200*1000}, async function (numBlocks, name) {
+    var height;
+    for(let i=0;i<numBlocks;i++) {
+        await this.mineBlock(name);
+        this.tipHeight += 1;
+        height = parseInt(this.tipHeight);
+        await this.forEachClientAsync(async (client, name) => {
+            await waitFor(async() => client.getTipHeight(), height, 1200*1000);
+            const currTip = await client.getTipHeight();
+            console.log(`Node ${name} is at tip: ${currTip} (should be`, height, `)`);
+            expect(currTip).to.equal(height);
+        })
+    }
 });
 
 When(/I mine (\d+) blocks using wallet (.*) on (.*)/, {timeout: 600*1000}, async function (numBlocks, walletName,nodeName) {
@@ -235,6 +276,23 @@ When(/I mine (\d+) blocks using wallet (.*) on (.*)/, {timeout: 600*1000}, async
 When(/I merge mine (.*) blocks via (.*)/, {timeout: 600*1000}, async function (numBlocks, mmProxy) {
     for(let i=0;i<numBlocks;i++) {
         await this.mergeMineBlock(mmProxy);
+    }
+    this.tipHeight += parseInt(numBlocks);
+});
+
+
+When(/I sync merge mine (.*) blocks via (.*)/, {timeout: 1200*1000}, async function (numBlocks, mmProxy) {
+    var height;
+    for(let i=0;i<numBlocks;i++) {
+        await this.mergeMineBlock(mmProxy);
+        this.tipHeight += 1;
+        height = parseInt(this.tipHeight);
+        await this.forEachClientAsync(async (client, name) => {
+            await waitFor(async() => client.getTipHeight(), height, 1200*1000);
+            const currTip = await client.getTipHeight();
+            console.log(`Node ${name} is at tip: ${currTip} (should be`, height, `)`);
+            expect(currTip).to.equal(height);
+        })
     }
 });
 
@@ -314,7 +372,7 @@ When(/I wait for wallet (.*) to have at least (.*) tari/, {timeout: 250*1000}, a
     console.log("Waiting for " + wallet + " balance to be at least " + amount + " uT");
     let balance = await walletClient.getBalance();
     consoleLogBalance(balance);
-    if (balance["available_balance"] < amount) {
+    if (parseInt(balance["available_balance"]) < parseInt(amount)) {
         await waitFor(async() => walletClient.isBalanceAtLeast(amount), true, 240*1000, 5*1000, 5);
         if (!walletClient.isBalanceAtLeast(amount)) {
             console.log("Balance not adequate!");
@@ -338,6 +396,33 @@ async function send_tari(sourceWallet, destWallet, tariAmount, fee) {
             "amount": tariAmount,
             "fee_per_gram": fee,
             "message": "msg"}]
+        });
+        success = lastResult.results[0]["is_success"]
+        if (!success) {
+            let wait_seconds = 5;
+            console.log("  " + lastResult.results[0]["failure_message"] + ", trying again after " + wait_seconds +
+                "s (" + retries + " of " + retries_limit + ")");
+            await sleep(wait_seconds * 1000);
+            retries++;
+        }
+    }
+    return lastResult;
+}
+
+async function send_tari_no_logs(sourceWallet, destWallet, tariAmount, fee) {
+    let sourceWalletClient = sourceWallet.getClient();
+    let destInfo = await destWallet.getClient().identify();
+    let success = false;
+    let retries = 1;
+    let retries_limit = 25;
+    var lastResult;
+    let message = "Transaction from " + sourceWallet + " to " + destWallet + " " + i;
+    while (!success && retries <= retries_limit) {
+        lastResult = await sourceWalletClient.transfer({
+            "recipients": [{"address": destInfo["public_key"],
+            "amount": tariAmount,
+            "fee_per_gram": fee,
+            "message": message}]
         });
         success = lastResult.results[0]["is_success"]
         if (!success) {
@@ -394,88 +479,55 @@ When(/I multi-send (.*) uT from wallet (.*) to all wallets at fee (.*)/, {timeou
     }
 });
 
-When(/I send (.*) tari from (.*) to (.*),(.*) at fee (.*)/, async function (tariAmount,source,dest,dest2,fee) {
- let wallet = this.getWallet(source);
- let client = wallet.getClient();
- let destWallet = this.getWallet(dest);
- let destClient = destWallet.getClient();
- let destWallet2 = this.getWallet(dest2);
- let destClient2 = destWallet2.getClient();
+When(/I send (.*) uT from (.*) to (.*) and (.*) at fee (.*)/, async function (tariAmount, source, dest1, dest2, fee) {
+    let sourceClient = this.getWallet(source).getClient();
+    let destClient1 = this.getWallet(dest1).getClient();
+    let destClient2 = this.getWallet(dest2).getClient();
 
- var destInfo = await destClient.identify();
- var dest2Info = await destClient2.identify();
- console.log("Starting Transfer of",tariAmount,"to");
- console.log(destInfo);
- console.log(dest2Info);
- let output = await client.transfer({"recipients": [{"address": destInfo["public_key"],
-                                                     "amount": tariAmount,
-                                                      "fee_per_gram": fee,
-                                                      "message": "msg"
-                                                     },
-                                                     {
-                                                      "address": dest2Info["public_key"],
-                                                      "amount": tariAmount,
-                                                      "fee_per_gram": fee,
-                                                      "message": "msg"}]
-                                                    });
-  console.log("output", output);
-  lastResult = output;
+    var sourceInfo = await sourceClient.identify();
+    var dest1Info = await destClient1.identify();
+    var dest2Info = await destClient2.identify();
+    console.log("Starting transfer of", tariAmount, "to", dest1, "and to", dest2);
+    let success = false;
+    let retries = 1;
+    let retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+        lastResult = await sourceClient.transfer({
+            "recipients":[
+                {"address": dest1Info["public_key"],
+                "amount": tariAmount,
+                "fee_per_gram": fee,
+                "message": "msg"
+                },
+                {
+                "address": dest2Info["public_key"],
+                "amount": tariAmount,
+                "fee_per_gram": fee,
+                "message": "msg"}
+            ]
+        });
+        success = lastResult.results[0]["is_success"] && lastResult.results[1]["is_success"]
+        if (!success) {
+            let wait_seconds = 5;
+            console.log("  " + lastResult.results[0]["failure_message"] + ", trying again after " + wait_seconds +
+                "s (" + retries + " of " + retries_limit + ")");
+            await sleep(wait_seconds * 1000);
+            retries++;
+        }
+    }
+    if (success) {
+        this.addTransaction(sourceInfo["public_key"], lastResult.results[0]["transaction_id"]);
+        this.addTransaction(sourceInfo["public_key"], lastResult.results[1]["transaction_id"]);
+        this.addTransaction(dest1Info["public_key"], lastResult.results[0]["transaction_id"]);
+        this.addTransaction(dest2Info["public_key"], lastResult.results[1]["transaction_id"]);
+    }
+    expect(success).to.equal(true);
 });
 
 When(/I wait (.*) seconds/, {timeout: 600*1000}, async  function (int) {
     console.log("Waiting for", int, "seconds");
     await sleep(int*1000);
     console.log("Waiting finished");
-});
-
-Then(/Batch transfer of (.*) transactions was a success from (.*) to (.*),(.*)/,  async function (txCount,walletA,walletB,walletC) {
-   let walletAObj = this.getWallet(walletA);
-   let clientA = walletAObj.getClient();
-   let walletBObj = this.getWallet(walletB);
-   let clientB = walletBObj.getClient();
-   let walletCObj = this.getWallet(walletC);
-   let clientC = walletCObj.getClient();
-
-   var resultObj = lastResult["results"];
-   console.log(resultObj);
-   for(var i = 0; i < txCount; i++) {
-       var found = 0;
-       var obj = resultObj[i];
-       if (obj["is_success"] == false) {
-            console.log(obj["transaction_id"],"failed");
-            assert(obj["is_success"],true);
-       } else {
-            console.log("Transaction",obj["transaction_id"],"passed from original request succeeded");
-            let req = { "transaction_ids" : [
-              obj["transaction_id"].toString()
-            ]};
-            console.log(req);
-            try {
-              let txA = await clientA.getTransactionInfo(req);
-              console.log(txA);
-            } catch (err) {
-               console.log(obj["transaction_id"].toString(),"not found in :", await clientA.identify());
-            }
-            try {
-              let txB = await clientB.getTransactionInfo(req);
-              console.log(txB);
-              found++;
-             } catch (err) {
-               console.log(obj["transaction_id"].toString(),"not found in :", await clientB.identify());
-             }
-            try {
-              let txC = await clientC.getTransactionInfo(req);
-              console.log(txC);
-              found++;
-            } catch (err) {
-               console.log(obj["transaction_id"].toString(),"not found in :",await clientC.identify());
-            }
-       }
-   }
-
-   console.log("Number of transactions found is",found,"of",txCount);
-   assert(found == txCount);
-   console.log("All transactions found");
 });
 
 Then(/wallet (.*) detects all transactions are at least Pending/, {timeout: 3800*1000}, async function (walletName) {
@@ -486,13 +538,17 @@ Then(/wallet (.*) detects all transactions are at least Pending/, {timeout: 3800
     var walletInfo = await walletClient.identify();
 
     let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-    console.log("\nDetecting transactions as at least Pending: ", walletName, txIds)
+    if (txIds === undefined) {
+        console.log("\nNo transactions for " + walletName + "!")
+        expect(false).to.equal(true);
+    }
+    console.log("\nDetecting", txIds.length, "transactions as at least Pending: ", walletName, txIds)
     for (i = 0; i < txIds.length; i++) {
-         console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to register at least Pending in the wallet ...");
+         console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to register at least Pending in the wallet ...");
          await waitFor(async() => wallet.getClient().isTransactionAtLeastPending(txIds[i]), true, 3700*1000, 5*1000, 5);
          let transactionPending = await wallet.getClient().isTransactionAtLeastPending(txIds[i]);
-         let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-         consoleLogTransactionDetails(txnDetails, txIds[i]);
+         //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+         //consoleLogTransactionDetails(txnDetails, txIds[i]);
          expect(transactionPending).to.equal(true);
    }
 
@@ -507,13 +563,17 @@ Then(/all wallets detect all transactions are at least Pending/, {timeout: 3800*
         var walletInfo = await walletClient.identify();
 
         let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-        console.log("\nDetecting transactions as at least Pending: ", walletName, txIds)
+        if (txIds === undefined) {
+            console.log("\nNo transactions for " + walletName + "!")
+            expect(false).to.equal(true);
+        }
+        console.log("\nDetecting", txIds.length, "transactions as at least Pending: ", walletName, txIds)
         for (i = 0; i < txIds.length; i++) {
-             console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to register at least Pending in the wallet ...");
+             console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to register at least Pending in the wallet ...");
              await waitFor(async() => wallet.getClient().isTransactionAtLeastPending(txIds[i]), true, 3700*1000, 5*1000, 5);
              let transactionPending = await wallet.getClient().isTransactionAtLeastPending(txIds[i]);
-             let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-             consoleLogTransactionDetails(txnDetails, txIds[i]);
+             //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+             //consoleLogTransactionDetails(txnDetails, txIds[i]);
              expect(transactionPending).to.equal(true);
        }
    }
@@ -526,14 +586,18 @@ Then(/wallet (.*) detects all transactions are at least Completed/, {timeout: 12
     var walletInfo = await walletClient.identify();
 
     let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-    console.log("\nDetecting transactions as at least Completed: ", walletName, txIds)
+    if (txIds === undefined) {
+        console.log("\nNo transactions for " + walletName + "!")
+        expect(false).to.equal(true);
+    }
+    console.log("\nDetecting", txIds.length, "transactions as at least Completed: ", walletName, txIds)
     for (i = 0; i < txIds.length; i++) {
         // Get details
-        console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to register at least Completed in the wallet ...");
+        console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to register at least Completed in the wallet ...");
         await waitFor(async() => wallet.getClient().isTransactionAtLeastCompleted(txIds[i]), true, 600*1000, 5*1000, 5);
         let transactionCompleted = await wallet.getClient().isTransactionAtLeastCompleted(txIds[i]);
-        let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+        //consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionCompleted).to.equal(true);
     }
 });
@@ -546,14 +610,18 @@ Then(/all wallets detect all transactions are at least Completed/, {timeout: 120
         var walletInfo = await walletClient.identify();
 
         let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-        console.log("\nDetecting transactions as at least Completed: ", walletName, txIds)
+        if (txIds === undefined) {
+            console.log("\nNo transactions for " + walletName + "!")
+            expect(false).to.equal(true);
+        }
+        console.log("\nDetecting", txIds.length, "transactions as at least Completed: ", walletName, txIds)
         for (i = 0; i < txIds.length; i++) {
             // Get details
-            console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to register at least Completed in the wallet ...");
+            console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to register at least Completed in the wallet ...");
             await waitFor(async() => wallet.getClient().isTransactionAtLeastCompleted(txIds[i]), true, 1100*1000, 5*1000, 5);
             let transactionCompleted = await wallet.getClient().isTransactionAtLeastCompleted(txIds[i]);
-            let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-            consoleLogTransactionDetails(txnDetails, txIds[i]);
+            //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+            //consoleLogTransactionDetails(txnDetails, txIds[i]);
             expect(transactionCompleted).to.equal(true);
         }
     }
@@ -566,14 +634,18 @@ Then(/wallet (.*) detects all transactions are at least Broadcast/, {timeout: 12
     var walletInfo = await walletClient.identify();
 
     let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-    console.log("\nDetecting transactions as at least Broadcast: ", walletName, txIds)
+    if (txIds === undefined) {
+        console.log("\nNo transactions for " + walletName + "!")
+        expect(false).to.equal(true);
+    }
+    console.log("\nDetecting", txIds.length, "transactions as at least Broadcast: ", walletName, txIds)
     for (i = 0; i < txIds.length; i++) {
         // Get details
-        console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to register at least Broadcast in the wallet ...");
+        console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to register at least Broadcast in the wallet ...");
         await waitFor(async() => wallet.getClient().isTransactionAtLeastBroadcast(txIds[i]), true, 600*1000, 5*1000, 5);
         let transactionBroadcasted = await wallet.getClient().isTransactionAtLeastBroadcast(txIds[i]);
-        let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+        //consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(transactionBroadcasted).to.equal(true);
     }
 });
@@ -586,14 +658,18 @@ Then(/all wallets detect all transactions are at least Broadcast/, {timeout: 120
         var walletInfo = await walletClient.identify();
 
         let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-        console.log("\nDetecting transactions as at least Broadcast: ", walletName, txIds)
+        if (txIds === undefined) {
+            console.log("\nNo transactions for " + walletName + "!")
+            expect(false).to.equal(true);
+        }
+        console.log("\nDetecting", txIds.length, "transactions as at least Broadcast: ", walletName, txIds)
         for (i = 0; i < txIds.length; i++) {
             // Get details
-            console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to register at least Broadcast in the wallet ...");
+            console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to register at least Broadcast in the wallet ...");
             await waitFor(async() => wallet.getClient().isTransactionAtLeastBroadcast(txIds[i]), true, 1100*1000, 5*1000, 5);
             let transactionBroadcasted = await wallet.getClient().isTransactionAtLeastBroadcast(txIds[i]);
-            let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-            consoleLogTransactionDetails(txnDetails, txIds[i]);
+            //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+            //consoleLogTransactionDetails(txnDetails, txIds[i]);
             expect(transactionBroadcasted).to.equal(true);
         }
     }
@@ -606,13 +682,17 @@ Then(/wallet (.*) detects all transactions are at least Mined_Unconfirmed/, {tim
     var walletInfo = await walletClient.identify();
 
     let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-    console.log("\nDetecting transactions as at least Mined_Unconfirmed: ", walletName, txIds)
+    if (txIds === undefined) {
+        console.log("\nNo transactions for " + walletName + "!")
+        expect(false).to.equal(true);
+    }
+    console.log("\nDetecting", txIds.length, "transactions as at least Mined_Unconfirmed: ", walletName, txIds)
     for (i = 0; i < txIds.length; i++) {
-        console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to be detected as Mined_Unconfirmed in the wallet ...");
+        console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to be detected as Mined_Unconfirmed in the wallet ...");
         await waitFor(async() => wallet.getClient().isTransactionAtLeastMinedUnconfirmed(txIds[i]), true, 600*1000, 5*1000, 5);
         let isTransactionAtLeastMinedUnconfirmed = await wallet.getClient().isTransactionAtLeastMinedUnconfirmed(txIds[i]);
-        let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+        //consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionAtLeastMinedUnconfirmed).to.equal(true);
     }
 });
@@ -625,13 +705,17 @@ Then(/all wallets detect all transactions are at least Mined_Unconfirmed/, {time
         var walletInfo = await walletClient.identify();
 
         let txIds = this.transactionsMap.get(walletInfo["public_key"]);
+        if (txIds === undefined) {
+            console.log("\nNo transactions for " + walletName + "!")
+            expect(false).to.equal(true);
+        }
         console.log("\nDetecting", txIds.length, "transactions as at least Mined_Unconfirmed: ", walletName, txIds)
         for (i = 0; i < txIds.length; i++) {
-            console.log("\n" + wallet.name + ": Waiting for transaction", i+1, "with TxId", txIds[i] + " to be detected as Mined_Unconfirmed in the wallet ...");
+            console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:", txIds[i] + " to be detected as Mined_Unconfirmed in the wallet ...");
             await waitFor(async() => wallet.getClient().isTransactionAtLeastMinedUnconfirmed(txIds[i]), true, 1100*1000, 5*1000, 5);
             let isTransactionAtLeastMinedUnconfirmed = await wallet.getClient().isTransactionAtLeastMinedUnconfirmed(txIds[i]);
-            let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-            consoleLogTransactionDetails(txnDetails, txIds[i]);
+            //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+            //consoleLogTransactionDetails(txnDetails, txIds[i]);
             expect(isTransactionAtLeastMinedUnconfirmed).to.equal(true);
         }
     }
@@ -644,13 +728,17 @@ Then(/wallet (.*) detects all transactions as Mined_Unconfirmed/, {timeout: 1200
     var walletInfo = await walletClient.identify();
 
     let txIds = this.transactionsMap.get(walletInfo["public_key"]);
+    if (txIds === undefined) {
+        console.log("\nNo transactions for " + walletName + "!")
+        expect(false).to.equal(true);
+    }
     console.log("\nDetecting", txIds.length, "transactions as Mined_Unconfirmed: ", walletName, txIds)
     for (i = 0; i < txIds.length; i++) {
-        console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to be detected as Mined_Unconfirmed in the wallet ...");
+        console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to be detected as Mined_Unconfirmed in the wallet ...");
         await waitFor(async() => wallet.getClient().isTransactionMinedUnconfirmed(txIds[i]), true, 600*1000, 5*1000, 5);
         let isTransactionMinedUnconfirmed = await wallet.getClient().isTransactionMinedUnconfirmed(txIds[i]);
-        let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+        //consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionMinedUnconfirmed).to.equal(true);
     }
 });
@@ -663,13 +751,17 @@ Then(/all wallets detect all transactions as Mined_Unconfirmed/, {timeout: 1200*
         var walletInfo = await walletClient.identify();
 
         let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-        console.log("\nDetecting transactions as Mined_Unconfirmed: ", walletName, txIds)
+        if (txIds === undefined) {
+            console.log("\nNo transactions for " + walletName + "!")
+            expect(false).to.equal(true);
+        }
+        console.log("\nDetecting", txIds.length, "transactions as Mined_Unconfirmed: ", walletName, txIds)
         for (i = 0; i < txIds.length; i++) {
-            console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to be detected as Mined_Unconfirmed in the wallet ...");
+            console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to be detected as Mined_Unconfirmed in the wallet ...");
             await waitFor(async() => wallet.getClient().isTransactionMinedUnconfirmed(txIds[i]), true, 1100*1000, 5*1000, 5);
             let isTransactionMinedUnconfirmed = await wallet.getClient().isTransactionMinedUnconfirmed(txIds[i]);
-            let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-            consoleLogTransactionDetails(txnDetails, txIds[i]);
+            //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+            //consoleLogTransactionDetails(txnDetails, txIds[i]);
             expect(isTransactionMinedUnconfirmed).to.equal(true);
         }
     }
@@ -682,13 +774,17 @@ Then(/wallet (.*) detects all transactions as Mined_Confirmed/, {timeout: 1200*1
     var walletInfo = await walletClient.identify();
 
     let txIds = this.transactionsMap.get(walletInfo["public_key"]);
+    if (txIds === undefined) {
+        console.log("\nNo transactions for " + walletName + "!")
+        expect(false).to.equal(true);
+    }
     console.log("\nDetecting", txIds.length, "transactions as Mined_Confirmed: ", walletName, txIds)
     for (i = 0; i < txIds.length; i++) {
-        console.log("\n" + wallet.name + ": Waiting for transaction", i+1, " with TxId:" + txIds[i] + " to be detected as Mined_Confirmed in the wallet ...");
+        console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to be detected as Mined_Confirmed in the wallet ...");
         await waitFor(async() => wallet.getClient().isTransactionMinedConfirmed(txIds[i]), true, 600*1000, 5*1000, 5);
         let isTransactionMinedConfirmed = await wallet.getClient().isTransactionMinedConfirmed(txIds[i]);
-        let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+        //consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionMinedConfirmed).to.equal(true);
     }
 });
@@ -700,9 +796,13 @@ Then(/while mining via (.*) all transactions in wallet (.*) are found to be Mine
     let nodeClient = this.getClient(nodeName);
 
     let txIds = this.transactionsMap.get(walletInfo["public_key"]);
+    if (txIds === undefined) {
+        console.log("\nNo transactions for " + walletName + "!")
+        expect(false).to.equal(true);
+    }
     console.log("\nDetecting", txIds.length, "transactions as Mined_Confirmed: ", walletName, txIds)
     for (i = 0; i < txIds.length; i++) {
-        console.log("\n" + wallet.name + ": Waiting for transaction", i+1, " with TxId:" + txIds[i] + " to be detected as Mined_Confirmed in the wallet ...");
+        console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to be detected as Mined_Confirmed in the wallet ...");
         await waitFor(
             async() => {
                 if (await walletClient.isTransactionMinedConfirmed(txIds[i])) {
@@ -714,8 +814,8 @@ Then(/while mining via (.*) all transactions in wallet (.*) are found to be Mine
             }
             , true, 600*1000, 5*1000, 5);
         let isTransactionMinedConfirmed = await wallet.getClient().isTransactionMinedConfirmed(txIds[i]);
-        let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+        //consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionMinedConfirmed).to.equal(true);
     }
 });
@@ -726,9 +826,13 @@ Then(/while merge mining via (.*) all transactions in wallet (.*) are found to b
     var walletInfo = await walletClient.identify();
 
     let txIds = this.transactionsMap.get(walletInfo["public_key"]);
+    if (txIds === undefined) {
+        console.log("\nNo transactions for " + walletName + "!")
+        expect(false).to.equal(true);
+    }
     console.log("\nDetecting", txIds.length, "transactions as Mined_Confirmed: ", walletName, txIds)
     for (i = 0; i < txIds.length; i++) {
-        console.log("\n" + wallet.name + ": Waiting for transaction", i+1, " with TxId:" + txIds[i] + " to be detected as Mined_Confirmed in the wallet ...");
+        console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to be detected as Mined_Confirmed in the wallet ...");
         await waitFor(
             async() => {
                 if (await walletClient.isTransactionMinedConfirmed(txIds[i])) {
@@ -740,13 +844,13 @@ Then(/while merge mining via (.*) all transactions in wallet (.*) are found to b
             }
             , true, 600*1000, 5*1000, 5);
         let isTransactionMinedConfirmed = await wallet.getClient().isTransactionMinedConfirmed(txIds[i]);
-        let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-        consoleLogTransactionDetails(txnDetails, txIds[i]);
+        //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+        //consoleLogTransactionDetails(txnDetails, txIds[i]);
         expect(isTransactionMinedConfirmed).to.equal(true);
     }
 });
 
-Then(/all wallets detect all transactions as Mined_Confirmed/, {timeout: 1200*1000}, async function () {
+Then(/all wallets detect all transactions as Mined_Confirmed/, {timeout: 3800*1000}, async function () {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     for (const walletName in this.wallets) {
         let wallet = this.getWallet(walletName)
@@ -754,13 +858,17 @@ Then(/all wallets detect all transactions as Mined_Confirmed/, {timeout: 1200*10
         var walletInfo = await walletClient.identify();
 
         let txIds = this.transactionsMap.get(walletInfo["public_key"]);
-        console.log("\nDetecting transactions as Mined_Confirmed: ", walletName, txIds)
+        if (txIds === undefined) {
+            console.log("\nNo transactions for " + walletName + "!")
+            expect(false).to.equal(true);
+        }
+        console.log("\nDetecting", txIds.length, "transactions as Mined_Confirmed: ", walletName, txIds)
         for (i = 0; i < txIds.length; i++) {
-            console.log("\n" + wallet.name + ": Waiting for transaction " + txIds[i] + " to be detected as Mined_Confirmed in the wallet ...");
+            console.log("(" + (i + 1) + "/" + txIds.length + ") - " + wallet.name + ": Waiting for TxId:" + txIds[i] + " to be detected as Mined_Confirmed in the wallet ...");
             await waitFor(async() => wallet.getClient().isTransactionMinedConfirmed(txIds[i]), true, 1100*1000, 5*1000, 5);
             let isTransactionMinedConfirmed = await wallet.getClient().isTransactionMinedConfirmed(txIds[i]);
-            let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
-            consoleLogTransactionDetails(txnDetails, txIds[i]);
+            //let txnDetails = await wallet.getClient().getTransactionDetails(txIds[i]);
+            //consoleLogTransactionDetails(txnDetails, txIds[i]);
             expect(isTransactionMinedConfirmed).to.equal(true);
         }
     }
@@ -836,26 +944,36 @@ Then('difficulties are available', function () {
 
 });
 
-When(/I coin split tari in wallet (.*) to produce (.*) UTXOs of (.*) uT each with fee_per_gram (.*) uT/, {timeout: 25*5*1000}, async function (walletName, splitNum, splitValue, feePerGram) {
+When(/I coin split tari in wallet (.*) to produce (.*) UTXOs of (.*) uT each with fee_per_gram (.*) uT/, {timeout: 4800*1000}, async function (walletName, splitNum, splitValue, feePerGram) {
     console.log("\n");
+    let numberOfSplits = Math.ceil(splitNum/499);
+    let splitsLeft = splitNum;
+
     let wallet = this.getWallet(walletName)
     let walletClient = wallet.getClient();
     let walletInfo = await walletClient.identify();
-    let result = await walletClient.coin_split(
-        {
-            "amount_per_split": splitValue,
-            "split_count": splitNum,
-            "fee_per_gram": feePerGram,
-            "message": "Cucumber coinsplit",
-            "lockheight": 0,
-        }
-    );
-    console.log("Coin split to produce", splitNum, "values of", splitValue, "uT completed with TxId: ", result);
-    this.addTransaction(walletInfo["public_key"], result["tx_id"]);
-    this.lastResult = result;
+
+    console.log("Performing", numberOfSplits, "coin splits to produce", splitNum, "outputs of", splitValue,"uT");
+
+    for (let i = 0; i<numberOfSplits; i++) {
+        let splits = Math.min(499, splitsLeft);
+        splitsLeft -= splits;
+        let result = await walletClient.coin_split(
+            {
+                "amount_per_split": splitValue,
+                "split_count": splits,
+                "fee_per_gram": feePerGram,
+                "message": "Cucumber coinsplit",
+                "lockheight": 0,
+            }
+        );
+        console.log("Coin split", (i+1), "/", numberOfSplits, " completed with TxId: ", result);
+        this.addTransaction(walletInfo["public_key"], result["tx_id"]);
+        this.lastResult = result;
+    }
 });
 
-When(/I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) at fee_per_gram (.*)/, {timeout: 25*5*1000}, async function (numTransactions, amount, sourceWallet, dest, fee) {
+When(/I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) at fee_per_gram (.*)/, {timeout: 10000*1000}, async function (numTransactions, amount, sourceWallet, dest, fee) {
     console.log("\n");
     let sourceWalletClient = this.getWallet(sourceWallet).getClient();
     let sourceInfo = await sourceWalletClient.identify();
@@ -864,19 +982,14 @@ When(/I send (.*) transactions of (.*) uT each from wallet (.*) to wallet (.*) a
     console.log("Sending", numTransactions, "transactions from", sourceWallet, "to", dest);
 
     let batch = 1;
+    var result;
     for (i = 0; i<numTransactions; i++) {
-        let message = "Transaction from " + sourceWallet + " to " + dest + " " + i;
-        let result = await sourceWalletClient.transfer({
-            "recipients": [{"address": destInfo["public_key"],
-            "amount": amount,
-            "fee_per_gram": fee,
-            "message": message}]
-        });
+        result = await send_tari_no_logs(this.getWallet(sourceWallet), this.getWallet(dest), amount, fee);
         expect(result.results[0]["is_success"]).to.equal(true);
         this.addTransaction(sourceInfo["public_key"], result.results[0]["transaction_id"]);
         this.addTransaction(destInfo["public_key"], result.results[0]["transaction_id"]);
 
-        if (i/10 >= batch) {
+        if (i/50 >= batch) {
             batch++;
             console.log(i, "/", numTransactions, " transactions sent");
         }
