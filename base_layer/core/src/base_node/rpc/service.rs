@@ -26,8 +26,10 @@ use crate::{
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto::{
         base_node::{
+            ChainMetadata,
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            ReorgInfo,
             Signatures as SignaturesProto,
             TipInfoResponse,
             TxLocation,
@@ -324,9 +326,30 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
+        let reorg_info = match self
+            .db
+            .fetch_reorg_info()
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+        {
+            None => None,
+            Some(val) => Some(ReorgInfo {
+                last_reorg_best_block: val.last_reorg_best_block.clone(),
+                num_blocks_reorged: val.num_blocks_reorged,
+                tip_height: val.tip_height,
+            }),
+        };
+
         Ok(Response::new(TipInfoResponse {
-            metadata: Some(metadata.into()),
+            metadata: Some(ChainMetadata {
+                height_of_longest_chain: Some(metadata.height_of_longest_chain()),
+                best_block: Some(metadata.best_block().to_vec()),
+                pruning_horizon: metadata.pruning_horizon(),
+                accumulated_difficulty: metadata.accumulated_difficulty().to_be_bytes().to_vec(),
+                effective_pruned_height: metadata.pruned_height(),
+            }),
             is_synced,
+            reorg_info,
         }))
     }
 }

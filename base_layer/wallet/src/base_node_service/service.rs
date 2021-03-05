@@ -35,10 +35,19 @@ use std::{
 use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
-use tari_common_types::chain_metadata::ChainMetadata;
+use tari_common_types::{
+    chain_metadata::{ChainMetadata, ReorgInfo},
+    types::HashOutput,
+};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::Peer};
+use tokio::task;
 
-use crate::storage::database::WalletBackend;
+use crate::{
+    output_manager_service::{handle::OutputManagerHandle, protocols::txo_validation_protocol::TxoValidationType},
+    storage::database::WalletBackend,
+    transaction_service::handle::TransactionServiceHandle,
+    types::ValidationRetryStrategy,
+};
 use tari_core::base_node::rpc::BaseNodeWalletRpcClient;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
@@ -54,6 +63,7 @@ pub struct BaseNodeState {
     pub updated: Option<NaiveDateTime>,
     pub latency: Option<Duration>,
     pub online: OnlineState,
+    pub reorg_info: Option<ReorgInfo>,
 }
 
 /// Connection state of the Base Node
@@ -72,6 +82,7 @@ impl Default for BaseNodeState {
             updated: None,
             latency: None,
             online: OnlineState::Connecting,
+            reorg_info: None,
         }
     }
 }
@@ -88,11 +99,14 @@ where T: WalletBackend + 'static
     shutdown_signal: Option<ShutdownSignal>,
     state: BaseNodeState,
     db: WalletDatabase<T>,
+    output_manager_service: OutputManagerHandle,
+    transaction_service: TransactionServiceHandle,
 }
 
 impl<T> BaseNodeService<T>
 where T: WalletBackend + 'static
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: BaseNodeServiceConfig,
         request_stream: Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>,
@@ -100,6 +114,8 @@ where T: WalletBackend + 'static
         event_publisher: BaseNodeEventSender,
         shutdown_signal: ShutdownSignal,
         db: WalletDatabase<T>,
+        output_manager_service: OutputManagerHandle,
+        transaction_service: TransactionServiceHandle,
     ) -> Self
     {
         Self {
@@ -111,6 +127,8 @@ where T: WalletBackend + 'static
             shutdown_signal: Some(shutdown_signal),
             state: Default::default(),
             db,
+            output_manager_service,
+            transaction_service,
         }
     }
 
@@ -132,6 +150,7 @@ where T: WalletBackend + 'static
             updated: Some(now),
             latency: None,
             online: OnlineState::Offline,
+            reorg_info: None,
         };
 
         let event = BaseNodeEvent::BaseNodeState(state.clone());
@@ -230,7 +249,7 @@ where T: WalletBackend + 'static
 
         let metadata = tip_info
             .metadata
-            .ok_or_else(|| BaseNodeServiceError::RpcError("Tip info no metadata".to_string()))?;
+            .ok_or_else(|| BaseNodeServiceError::RpcError("Tip info has no metadata".to_string()))?;
 
         let chain_metadata = ChainMetadata::try_from(metadata)
             .map_err(|_| BaseNodeServiceError::ConversionError("Error in chain metadata conversion".to_string()))?;
@@ -238,12 +257,68 @@ where T: WalletBackend + 'static
         // store chain metadata in the wallet db
         self.db.set_chain_metadata(chain_metadata.clone()).await?;
 
+        let reorg_info_new = match tip_info.reorg_info {
+            Some(val) => Some(ReorgInfo {
+                last_reorg_best_block: val.last_reorg_best_block,
+                num_blocks_reorged: val.num_blocks_reorged,
+                tip_height: val.tip_height,
+            }),
+            None => None,
+        };
+        let current_last_reorg_best_block = match self.state.reorg_info.clone() {
+            None => HashOutput::default(),
+            Some(val) => val.last_reorg_best_block,
+        };
+        if let Some(val) = reorg_info_new.clone() {
+            if current_last_reorg_best_block != val.last_reorg_best_block {
+                let mut transaction_service = self.transaction_service.clone();
+                let mut output_manager_service = self.output_manager_service.clone();
+                task::spawn(async move {
+                    info!(
+                        target: LOG_TARGET,
+                        "Chain reorg detected, restarting transaction validation"
+                    );
+                    if let Err(e) = transaction_service
+                        .validate_transactions(ValidationRetryStrategy::UntilSuccess)
+                        .await
+                    {
+                        error!(target: LOG_TARGET, "Problem validating transactions after reorg: {}", e);
+                    }
+                    info!(target: LOG_TARGET, "Chain reorg detected, restarting UTXOs validation");
+                    if let Err(e) = output_manager_service
+                        .validate_txos(TxoValidationType::Unspent, ValidationRetryStrategy::UntilSuccess)
+                        .await
+                    {
+                        error!(target: LOG_TARGET, "Problem validating UTXOs after reorg: {}", e);
+                    }
+                    info!(target: LOG_TARGET, "Chain reorg detected, restarting STXOs validation");
+                    if let Err(e) = output_manager_service
+                        .validate_txos(TxoValidationType::Spent, ValidationRetryStrategy::UntilSuccess)
+                        .await
+                    {
+                        error!(target: LOG_TARGET, "Problem validating STXOs after reorg: {}", e);
+                    }
+                    info!(
+                        target: LOG_TARGET,
+                        "Chain reorg detected, restarting invalid TXOs validation"
+                    );
+                    if let Err(e) = output_manager_service
+                        .validate_txos(TxoValidationType::Invalid, ValidationRetryStrategy::UntilSuccess)
+                        .await
+                    {
+                        error!(target: LOG_TARGET, "Problem validating Invalid TXOs after reorg: {}", e);
+                    }
+                });
+            };
+        }
+
         let state = BaseNodeState {
             chain_metadata: Some(chain_metadata),
             is_synced: Some(tip_info.is_synced),
             updated: Some(now),
             latency,
             online: OnlineState::Online,
+            reorg_info: reorg_info_new,
         };
 
         let event = BaseNodeEvent::BaseNodeState(state.clone());

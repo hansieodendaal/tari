@@ -25,6 +25,7 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+use tari_common_types::types::HashOutput;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 use tari_core::{
     base_node::{
@@ -36,6 +37,7 @@ use tari_core::{
             ChainMetadata,
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            ReorgInfo,
             Signatures as SignaturesProto,
             TipInfoResponse,
             TxQueryBatchResponse as TxQueryBatchResponseProto,
@@ -118,6 +120,11 @@ impl BaseNodeWalletRpcMockState {
                     effective_pruned_height: 0,
                 }),
                 is_synced: true,
+                reorg_info: Option::from(ReorgInfo {
+                    last_reorg_best_block: HashOutput::default(),
+                    num_blocks_reorged: 0,
+                    tip_height: 0,
+                }),
             })),
             fetch_utxos_calls: Arc::new(Mutex::new(Vec::new())),
             response_delay: Arc::new(Mutex::new(None)),
@@ -313,7 +320,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<TransactionProto>,
     ) -> Result<Response<TxSubmissionResponseProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -341,7 +348,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -368,7 +375,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<SignaturesProto>,
     ) -> Result<Response<TxQueryBatchResponsesProto>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -413,7 +420,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         request: Request<FetchMatchingUtxos>,
     ) -> Result<Response<FetchUtxosResponse>, RpcStatus>
     {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -446,7 +453,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
     }
 
     async fn get_tip_info(&self, _request: Request<()>) -> Result<Response<TipInfoResponse>, RpcStatus> {
-        let delay_lock = (*acquire_lock!(self.state.response_delay));
+        let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             delay_for(delay).await;
         }
@@ -460,7 +467,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
 
         let tip_info_response_lock = acquire_lock!(self.state.tip_info_response);
 
-        Ok(Response::new(tip_info_response_lock.clone().into()))
+        Ok(Response::new(tip_info_response_lock.clone()))
     }
 }
 
@@ -474,12 +481,13 @@ mod test {
     };
 
     use std::convert::TryFrom;
+    use tari_common_types::types::HashOutput;
     use tari_core::{
         base_node::{
             proto::wallet_rpc::{TxSubmissionRejectionReason, TxSubmissionResponse},
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},
         },
-        proto::base_node::{ChainMetadata, TipInfoResponse},
+        proto::base_node::{ChainMetadata, ReorgInfo, TipInfoResponse},
         transactions::{transaction::Transaction, types::BlindingFactor},
     };
     use tokio::time::Duration;
@@ -540,9 +548,14 @@ mod test {
         service_state.set_tip_info_response(TipInfoResponse {
             metadata: Some(chain_metadata),
             is_synced: false,
+            reorg_info: Option::from(ReorgInfo {
+                last_reorg_best_block: HashOutput::default(),
+                num_blocks_reorged: 0,
+                tip_height: 0,
+            }),
         });
 
-        let resp = TipInfoResponse::try_from(client.get_tip_info().await.unwrap()).unwrap();
+        let resp = client.get_tip_info().await.unwrap();
         assert!(!resp.is_synced);
         assert_eq!(resp.metadata.unwrap().height_of_longest_chain(), 444);
     }
