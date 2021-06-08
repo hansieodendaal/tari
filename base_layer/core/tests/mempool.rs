@@ -642,7 +642,7 @@ fn receive_and_propagate_transaction() {
 }
 
 #[test]
-fn consensus_validation() {
+fn consensus_validation_large_tx() {
     let network = Network::LocalNet;
     // We dont want to compute the 19500 limit of local net, so we create smaller blocks
     let consensus_constants = ConsensusConstantsBuilder::new(network)
@@ -731,6 +731,10 @@ fn consensus_validation() {
         .unwrap();
     let kernels = vec![kernel];
     let tx = Transaction::new(inputs, outputs, kernels, offset, script_offset_pvt);
+
+    // make sure the tx was correctly made and is valid
+    let factories = CryptoFactories::default();
+        assert!(tx.validate_internal_consistency(&factories, None).is_ok());
     let weight = tx.calculate_weight();
 
     let height = blocks.len() as u64;
