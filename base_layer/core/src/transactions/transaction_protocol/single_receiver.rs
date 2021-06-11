@@ -108,14 +108,17 @@ impl SingleReceiverTransactionProtocol {
                 .range_proof
                 .construct_proof(&spending_key, sender_info.amount.into())?
         };
-        Ok(TransactionOutput::new(
+        let output = TransactionOutput::new(
             features,
             commitment,
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
             sender_info.script.clone(),
             sender_info.script_offset_public_key.clone(),
-        ))
+            sender_info.sender_metadata_signature.clone(),
+        );
+        let _ = output.verify_sender_signature()?;
+        Ok(output)
     }
 }
 
@@ -139,6 +142,7 @@ mod test {
         keys::{PublicKey as PK, SecretKey as SK},
         script::TariScript,
     };
+    use crate::transactions::transaction::TransactionOutput;
 
     fn generate_output_parms() -> (PrivateKey, PrivateKey, OutputFeatures) {
         let r = PrivateKey::random(&mut OsRng);
@@ -171,6 +175,9 @@ mod test {
             fee: MicroTari(100),
             lock_height: 0,
         };
+        let script_offset_secret_key = PrivateKey::random(&mut OsRng);
+        let script_offset_public_key = PublicKey::from_secret_key(&script_offset_secret_key);
+        let script = TariScript::default();
         let info = SingleRoundSenderData {
             tx_id: 500,
             amount: MicroTari(1500),
@@ -178,8 +185,10 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),
-            script: TariScript::default(),
-            script_offset_public_key: Default::default(),
+            features: of.clone(),
+            script: script.clone(),
+            script_offset_public_key,
+            sender_metadata_signature: TransactionOutput::create_sender_signature(&script, &of, &script_offset_secret_key),
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
         assert_eq!(prot.tx_id, 500, "tx_id is incorrect");

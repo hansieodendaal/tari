@@ -28,13 +28,19 @@ use crate::output_manager_service::{
     },
     MasterKeyManager,
 };
+use digest::Digest;
 use log::*;
 use std::sync::Arc;
 use tari_core::transactions::{
     transaction::{TransactionOutput, UnblindedOutput},
-    types::{CryptoFactories, PublicKey},
+    types::{CryptoFactories, PrivateKey, PublicKey},
 };
-use tari_crypto::{inputs, keys::PublicKey as PublicKeyTrait, tari_utilities::hex::Hex};
+use tari_crypto::{
+    common::Blake256,
+    inputs,
+    keys::PublicKey as PublicKeyTrait,
+    tari_utilities::{hex::Hex, ByteArray},
+};
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
@@ -76,20 +82,39 @@ where TBackend: OutputManagerBackend + 'static
                         &self.master_key_manager.rewind_data().rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| (v, output.features, output.script, output.script_offset_public_key))
+                    .map(|v| {
+                        (
+                            v,
+                            output.features,
+                            output.script,
+                            output.script_offset_public_key,
+                            output.sender_metadata_signature,
+                        )
+                    })
             })
-            .map(|(output, features, script, script_offset_public_key)| {
-                UnblindedOutput::new(
-                    output.committed_value,
-                    output.blinding_factor.clone(),
-                    Some(features),
-                    script,
-                    inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
-                    height,
-                    output.blinding_factor,
-                    script_offset_public_key,
-                )
-            })
+            .map(
+                |(output, features, script, script_offset_public_key, sender_metadata_signature)| {
+                    let beta_hash = Blake256::new()
+                        .chain(script.as_bytes())
+                        .chain(features.to_bytes())
+                        .chain(script_offset_public_key.as_bytes())
+                        .result()
+                        .to_vec();
+                    let beta = PrivateKey::from_bytes(beta_hash.as_slice())
+                        .expect("Should be able to construct a private key from a hash");
+                    UnblindedOutput::new(
+                        output.committed_value,
+                        output.blinding_factor.clone() - beta,
+                        Some(features),
+                        script,
+                        inputs!(PublicKey::from_secret_key(&output.blinding_factor)),
+                        height,
+                        output.blinding_factor,
+                        script_offset_public_key,
+                        sender_metadata_signature,
+                    )
+                },
+            )
             .collect();
 
         for output in rewound_outputs.iter_mut() {
