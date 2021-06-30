@@ -57,7 +57,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-        types::{Commitment, CryptoFactories, PrivateKey, PublicKey, Signature},
+        types::{ComSignature, Commitment, CryptoFactories, PrivateKey, PublicKey},
     },
 };
 use tari_crypto::{
@@ -613,7 +613,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.acquire_lock();
         let output = OutputSql::find_by_commitment_and_cancelled(&output.commitment.to_vec(), false, &conn)?;
         let tx_id = output.tx_id.map(|id| id as u64);
-        let _ = output.update(
+        output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Invalid),
                 tx_id: None,
@@ -633,7 +633,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if OutputStatus::try_from(output.status)? != OutputStatus::Invalid {
             return Err(OutputManagerStorageError::ValuesNotFound);
         }
-        let _ = output.update(
+        output.update(
             UpdateOutput {
                 status: Some(OutputStatus::Unspent),
                 tx_id: None,
@@ -849,9 +849,10 @@ struct NewOutputSql {
     script: Vec<u8>,
     input_data: Vec<u8>,
     script_private_key: Vec<u8>,
-    script_offset_public_key: Vec<u8>,
-    sender_metadata_signature_key: Vec<u8>,
-    sender_metadata_signature_nonce: Vec<u8>,
+    sender_offset_public_key: Vec<u8>,
+    metadata_signature_nonce: Vec<u8>,
+    metadata_signature_u_key: Vec<u8>,
+    metadata_signature_v_key: Vec<u8>,
 }
 
 impl NewOutputSql {
@@ -872,17 +873,10 @@ impl NewOutputSql {
             script: output.unblinded_output.script.as_bytes(),
             input_data: output.unblinded_output.input_data.as_bytes(),
             script_private_key: output.unblinded_output.script_private_key.to_vec(),
-            script_offset_public_key: output.unblinded_output.script_offset_public_key.to_vec(),
-            sender_metadata_signature_key: output
-                .unblinded_output
-                .sender_metadata_signature
-                .get_signature()
-                .to_vec(),
-            sender_metadata_signature_nonce: output
-                .unblinded_output
-                .sender_metadata_signature
-                .get_public_nonce()
-                .to_vec(),
+            sender_offset_public_key: output.unblinded_output.sender_offset_public_key.to_vec(),
+            metadata_signature_nonce: output.unblinded_output.metadata_signature.public_nonce().to_vec(),
+            metadata_signature_u_key: output.unblinded_output.metadata_signature.u().to_vec(),
+            metadata_signature_v_key: output.unblinded_output.metadata_signature.v().to_vec(),
         })
     }
 
@@ -922,9 +916,10 @@ struct OutputSql {
     script: Vec<u8>,
     input_data: Vec<u8>,
     script_private_key: Vec<u8>,
-    script_offset_public_key: Vec<u8>,
-    sender_metadata_signature_key: Vec<u8>,
-    sender_metadata_signature_nonce: Vec<u8>,
+    sender_offset_public_key: Vec<u8>,
+    metadata_signature_nonce: Vec<u8>,
+    metadata_signature_u_key: Vec<u8>,
+    metadata_signature_v_key: Vec<u8>,
 }
 
 impl OutputSql {
@@ -1099,22 +1094,29 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            PublicKey::from_vec(&o.script_offset_public_key).map_err(|_| {
+            PublicKey::from_vec(&o.sender_offset_public_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PublicKey from stored bytes, They might be encrypted"
                 );
                 OutputManagerStorageError::ConversionError
             })?,
-            Signature::new(
-                PublicKey::from_vec(&o.sender_metadata_signature_nonce).map_err(|_| {
+            ComSignature::new(
+                Commitment::from_vec(&o.metadata_signature_nonce).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PublicKey from stored bytes, They might be encrypted"
                     );
                     OutputManagerStorageError::ConversionError
                 })?,
-                PrivateKey::from_vec(&o.sender_metadata_signature_key).map_err(|_| {
+                PrivateKey::from_vec(&o.metadata_signature_u_key).map_err(|_| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not create PrivateKey from stored bytes, They might be encrypted"
+                    );
+                    OutputManagerStorageError::ConversionError
+                })?,
+                PrivateKey::from_vec(&o.metadata_signature_v_key).map_err(|_| {
                     error!(
                         target: LOG_TARGET,
                         "Could not create PrivateKey from stored bytes, They might be encrypted"
@@ -1177,9 +1179,10 @@ impl From<OutputSql> for NewOutputSql {
             script: o.script,
             input_data: o.input_data,
             script_private_key: o.script_private_key,
-            script_offset_public_key: o.script_offset_public_key,
-            sender_metadata_signature_key: o.sender_metadata_signature_key,
-            sender_metadata_signature_nonce: o.sender_metadata_signature_nonce,
+            sender_offset_public_key: o.sender_offset_public_key,
+            metadata_signature_nonce: o.metadata_signature_nonce,
+            metadata_signature_u_key: o.metadata_signature_u_key,
+            metadata_signature_v_key: o.metadata_signature_v_key,
         }
     }
 }

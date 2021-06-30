@@ -372,6 +372,7 @@ pub async fn generate_wallet_test_data<
     loop {
         futures::select! {
             event = alice_event_stream.select_next_some() => {
+                println!("{:?}", &*event.as_ref().unwrap());
                 match &*event.unwrap() {
                     TransactionEvent::ReceivedTransaction(_) => {
                         count +=1;

@@ -74,7 +74,7 @@ class TransactionBuilder {
     return Buffer.from(final).toString("hex");
   }
 
-  hashOutput(features, commitment, script, script_offset_public_key) {
+  hashOutput(features, commitment, script, sender_offset_public_key) {
     var KEY = null; // optional key
     var OUTPUT_LENGTH = 32; // bytes
     var context = blake2bInit(OUTPUT_LENGTH, KEY);
@@ -87,7 +87,7 @@ class TransactionBuilder {
     blake2bUpdate(context, features_buffer);
     blake2bUpdate(context, commitment);
     blake2bUpdate(context, script);
-    blake2bUpdate(context, script_offset_public_key);
+    blake2bUpdate(context, sender_offset_public_key);
     let final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
   }
@@ -146,7 +146,7 @@ class TransactionBuilder {
           signature_u: Buffer.from(script_sig.u, "hex"),
           signature_v: Buffer.from(script_sig.v, "hex"),
         },
-        script_offset_public_key: input.output.script_offset_public_key,
+        sender_offset_public_key: input.output.sender_offset_public_key,
       },
       amount: input.amount,
       privateKey: input.privateKey,
@@ -207,8 +207,8 @@ class TransactionBuilder {
         ),
         range_proof: Buffer.from(rangeproof, "hex"),
         script: nopScriptBytes,
-        script_offset_public_key: Buffer.from(scriptOffsetPublicKey, "hex"),
-        sender_metadata_signature: {
+        sender_offset_public_key: Buffer.from(scriptOffsetPublicKey, "hex"),
+        metadata_signature: {
           public_nonce: Buffer.from(sender_sig.public_nonce, "hex"),
           signature: Buffer.from(sender_sig.signature, "hex"),
         },
@@ -342,8 +342,8 @@ class TransactionBuilder {
           commitment: Buffer.from(coinbase.commitment, "hex"),
           range_proof: Buffer.from(rangeproof, "hex"),
           script: nopScriptBytes,
-          script_offset_public_key: Buffer.from(scriptOffsetPublicKey, "hex"),
-          sender_metadata_signature: {
+          sender_offset_public_key: Buffer.from(scriptOffsetPublicKey, "hex"),
+          metadata_signature: {
             public_nonce: Buffer.from(sender_sig.public_nonce, "hex"),
             signature: Buffer.from(sender_sig.signature, "hex"),
           },
