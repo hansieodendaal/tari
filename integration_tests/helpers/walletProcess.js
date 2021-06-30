@@ -220,11 +220,11 @@ class WalletProcess {
             script: Buffer.from(row.script, "hex"),
             input_data: Buffer.from(row.input_data, "hex"),
             script_private_key: Buffer.from(row.script_private_key, "hex"),
-            script_offset_public_key: Buffer.from(
-              row.script_offset_public_key,
+            sender_offset_public_key: Buffer.from(
+              row.sender_offset_public_key,
               "hex"
             ),
-            sender_metadata_signature: {
+            metadata_signature: {
               public_nonce: Buffer.from(row.public_nonce, "hex"),
               signature: Buffer.from(row.signature, "hex"),
             },
