@@ -250,20 +250,19 @@ impl UnblindedOutput {
         let script_nonce_b = PrivateKey::random(&mut OsRng);
         let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
 
-        let e = Challenge::new()
-            .chain(nonce_commitment.as_bytes())
-            .chain(self.script.as_bytes().as_slice())
-            .chain(self.input_data.as_bytes().as_slice())
-            .chain(PublicKey::from_secret_key(&self.script_private_key).as_bytes())
-            .chain(commitment.as_bytes())
-            .result()
-            .to_vec();
+        let challenge = TransactionInput::build_script_challenge(
+            &nonce_commitment,
+            &self.script,
+            &self.input_data,
+            &PublicKey::from_secret_key(&self.script_private_key),
+            &commitment,
+        );
         let script_signature = ComSignature::sign(
             self.value.into(),
             self.script_private_key.clone() + self.spending_key.clone(),
             script_nonce_a,
             script_nonce_b,
-            &e,
+            &challenge,
             factory,
         )
         .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
@@ -412,6 +411,23 @@ impl TransactionInput {
         }
     }
 
+    pub fn build_script_challenge(
+        nonce_commitment: &Commitment,
+        script: &TariScript,
+        input_data: &ExecutionStack,
+        script_public_key: &PublicKey,
+        commitment: &Commitment,
+    ) -> Vec<u8> {
+        Challenge::new()
+            .chain(nonce_commitment.as_bytes())
+            .chain(script.as_bytes().as_slice())
+            .chain(input_data.as_bytes().as_slice())
+            .chain(script_public_key.as_bytes())
+            .chain(commitment.as_bytes())
+            .result()
+            .to_vec()
+    }
+
     /// Accessor method for the commitment contained in an input
     pub fn commitment(&self) -> &Commitment {
         &self.commitment
@@ -422,10 +438,10 @@ impl TransactionInput {
         factory.open(&input.spending_key, &input.value.into(), &self.commitment)
     }
 
-    /// This will check if the input and the output is the same commitment by looking at the commitment and features.
-    /// This will ignore the output range proof
+    /// This will check if the input and the output is the same transactional output by looking at the commitment and
+    /// features and script. This will ignore all other output and input fields
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
-        self.commitment == output.commitment && self.features == output.features
+        self.output_hash() == output.hash()
     }
 
     /// This will run the script contained in the TransactionInput, returning either a script error or the resulting
@@ -444,18 +460,16 @@ impl TransactionInput {
         public_script_key: &PublicKey,
         factory: &CommitmentFactory,
     ) -> Result<(), TransactionError> {
-        let nonce_commitment = self.script_signature.public_nonce();
-        let m = Challenge::new()
-            .chain(nonce_commitment.as_bytes())
-            .chain(self.script.as_bytes().as_slice())
-            .chain(self.input_data.as_bytes().as_slice())
-            .chain(public_script_key.as_bytes())
-            .chain(self.commitment.as_bytes())
-            .result()
-            .to_vec();
+        let challenge = TransactionInput::build_script_challenge(
+            &self.script_signature.public_nonce(),
+            &self.script,
+            &self.input_data,
+            &public_script_key,
+            &self.commitment,
+        );
         if self
             .script_signature
-            .verify_challenge(&(&self.commitment + public_script_key), &m, factory)
+            .verify_challenge(&(&self.commitment + public_script_key), &challenge, factory)
         {
             Ok(())
         } else {
