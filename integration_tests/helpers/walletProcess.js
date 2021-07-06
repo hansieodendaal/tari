@@ -225,8 +225,9 @@ class WalletProcess {
               "hex"
             ),
             metadata_signature: {
-              public_nonce: Buffer.from(row.public_nonce, "hex"),
-              signature: Buffer.from(row.signature, "hex"),
+              public_nonce_commitment: Buffer.from(row.public_nonce, "hex"),
+              signature_u: Buffer.from(row.signature_u, "hex"),
+              signature_v: Buffer.from(row.signature_v, "hex"),
             },
           };
           unblinded_outputs.push(unblinded_output);
