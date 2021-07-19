@@ -331,6 +331,7 @@ pub async fn init_wallet(
             allow_test_addresses: config.allow_test_addresses,
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             saf_msg_validity: config.saf_expiry_duration,
+            msg_hash_dedup_cache_capacity: config.msg_hash_dedup_cache_capacity,
             ..Default::default()
         },
         // TODO: This should be false unless testing locally - make this configurable

@@ -91,6 +91,7 @@ pub struct GlobalConfig {
     pub buffer_size_base_node_wallet: usize,
     pub buffer_rate_limit_base_node: usize,
     pub buffer_rate_limit_base_node_wallet: usize,
+    pub msg_hash_dedup_cache_capacity: usize,
     pub fetch_blocks_timeout: Duration,
     pub fetch_utxos_timeout: Duration,
     pub service_request_timeout: Duration,
@@ -545,6 +546,11 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         cfg.get_int(&key)
             .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
 
+    let key = "common.msg_hash_dedup_cache_capacity";
+    let msg_hash_dedup_cache_capacity = cfg
+        .get_int(&key)
+        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))? as usize;
+
     let key = "common.fetch_blocks_timeout";
     let fetch_blocks_timeout = Duration::from_secs(
         cfg.get_int(&key)
@@ -677,6 +683,7 @@ fn convert_node_config(network: Network, cfg: Config) -> Result<GlobalConfig, Co
         buffer_size_base_node_wallet,
         buffer_rate_limit_base_node,
         buffer_rate_limit_base_node_wallet,
+        msg_hash_dedup_cache_capacity,
         fetch_blocks_timeout,
         fetch_utxos_timeout,
         service_request_timeout,

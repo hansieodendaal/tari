@@ -29,6 +29,7 @@
 
 use crate::{
     broadcast_strategy::BroadcastStrategy,
+    dedup::DedupCacheDatabase,
     discovery::DhtDiscoveryError,
     outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
     proto::{dht::JoinMessage, envelope::DhtMessageType},
@@ -38,7 +39,6 @@ use crate::{
 use chrono::{DateTime, Utc};
 use futures::{
     channel::{mpsc, mpsc::SendError, oneshot},
-    future,
     future::BoxFuture,
     stream::{Fuse, FuturesUnordered},
     SinkExt,
@@ -53,8 +53,7 @@ use tari_comms::{
 use tari_shutdown::ShutdownSignal;
 use tari_utilities::message_format::{MessageFormat, MessageFormatError};
 use thiserror::Error;
-use tokio::task;
-use ttl_cache::TtlCache;
+use tokio::{task, time};
 
 const LOG_TARGET: &str = "comms::dht::actor";
 
@@ -183,7 +182,7 @@ pub struct DhtActor {
     config: DhtConfig,
     shutdown_signal: Option<ShutdownSignal>,
     request_rx: Fuse<mpsc::Receiver<DhtRequest>>,
-    msg_hash_cache: TtlCache<Vec<u8>, ()>,
+    msg_hash_dedup_cache: DedupCacheDatabase,
 }
 
 impl DhtActor {
@@ -199,7 +198,7 @@ impl DhtActor {
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         Self {
-            msg_hash_cache: TtlCache::new(config.msg_hash_cache_capacity),
+            msg_hash_dedup_cache: DedupCacheDatabase::new(conn.clone(), config.msg_hash_dedup_cache_capacity),
             config,
             database: DhtDatabase::new(conn),
             outbound_requester,
@@ -236,6 +235,13 @@ impl DhtActor {
 
         let mut pending_jobs = FuturesUnordered::new();
 
+        let mut cleanup_ticker = time::interval(self.config.msg_hash_dedup_cache_trim_period).fuse();
+        debug!(
+            target: LOG_TARGET,
+            "Message dedup cache will be trimmed every {}s",
+            self.config.msg_hash_dedup_cache_trim_period.as_secs()
+        );
+
         let mut shutdown_signal = self
             .shutdown_signal
             .take()
@@ -251,6 +257,12 @@ impl DhtActor {
                 result = pending_jobs.select_next_some() => {
                     if let Err(err) = result {
                         debug!(target: LOG_TARGET, "Error when handling DHT request message. {}", err);
+                    }
+                },
+
+                _ = cleanup_ticker.select_next_some() => {
+                    if let Err(err) = self.msg_hash_dedup_cache.truncate().await {
+                        error!(target: LOG_TARGET, "Error when trimming message dedup cache: {:?}", err);
                     }
                 },
 
@@ -282,14 +294,23 @@ impl DhtActor {
                 Box::pin(Self::broadcast_join(node_identity, outbound_requester))
             },
             MsgHashCacheInsert(hash, reply_tx) => {
-                // No locks needed here. Downside is this isn't really async, however this should be
-                // fine as it is very quick
-                let already_exists = self
-                    .msg_hash_cache
-                    .insert(hash, (), self.config.msg_hash_cache_ttl)
-                    .is_some();
-                let result = reply_tx.send(already_exists).map_err(|_| DhtActorError::ReplyCanceled);
-                Box::pin(future::ready(result))
+                let msg_hash_cache = self.msg_hash_dedup_cache.clone();
+                Box::pin(async move {
+                    match msg_hash_cache.insert_body_hash_if_unique(hash).await {
+                        Ok(already_exists) => {
+                            let _ = reply_tx.send(already_exists).map_err(|_| DhtActorError::ReplyCanceled);
+                        },
+                        Err(err) => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Unable to update message dedup cache because {:?}", err
+                            );
+                            let _ = reply_tx.send(false).map_err(|_| DhtActorError::ReplyCanceled);
+                            // Err(DhtActorError::StorageError(err))
+                        },
+                    }
+                    Ok(())
+                })
             },
             SelectPeers(broadcast_strategy, reply_tx) => {
                 let peer_manager = Arc::clone(&self.peer_manager);
