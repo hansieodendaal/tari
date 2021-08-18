@@ -78,6 +78,13 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
                 },
                 Err(e @ BaseNodeMonitorError::RpcFailed(_)) => {
                     warn!(target: LOG_TARGET, "Connectivity failure to base node: {}", e);
+                    // debug!(target: LOG_TARGET, "Reconnect current base node peer...");
+                    // Disconnecting and re-setting the base node peer would revive a stale peer connection - most
+                    // the client can do. As the wallet's base node monitor service runs in a slow loop, it will
+                    // assist other services that are dependent on the same base node peer connection; if one service
+                    // suffers due to a bad/stale peer connection all services suffer.
+                    // self.reconnect_current_base_node_peer().await;
+                    // time::sleep(self.interval).await;
                     continue;
                 },
                 Err(e @ BaseNodeMonitorError::InvalidBaseNodeResponse(_)) |
@@ -92,6 +99,13 @@ impl<T: WalletBackend + 'static> BaseNodeMonitor<T> {
             "Base Node Service Monitor shutting down because it received the shutdown signal"
         );
     }
+
+    // async fn reconnect_current_base_node_peer(&mut self) {
+    //     if let Some(peer) = self.wallet_connectivity.get_current_base_node_peer() {
+    //         self.wallet_connectivity.disconnect_base_node(peer.clone()).await;
+    //         let _ = self.wallet_connectivity.set_base_node(peer).await;
+    //     };
+    // }
 
     async fn monitor_node(&mut self) -> Result<(), BaseNodeMonitorError> {
         loop {
