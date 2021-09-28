@@ -26,5 +26,5 @@ members = [
     "applications/tari_mining_node",
 ]
 #
-#[profile.release]
-#debug = true
+[profile.release]
+debug = true

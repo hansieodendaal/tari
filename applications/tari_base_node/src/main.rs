@@ -124,9 +124,16 @@ use tokio::{
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
+use dhat::{Dhat, DhatAlloc};
+
+#[global_allocator]
+static ALLOCATOR: DhatAlloc = DhatAlloc;
+
 const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
 fn main() {
+    let dhat = Dhat::start_heap_profiling();
+
     if let Err(exit_code) = main_inner() {
         eprintln!("{:?}", exit_code);
         error!(
@@ -135,6 +142,7 @@ fn main() {
             exit_code.as_i32(),
             exit_code
         );
+        drop(dhat);
         process::exit(exit_code.as_i32());
     }
 }

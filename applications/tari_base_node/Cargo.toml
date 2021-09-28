@@ -44,6 +44,8 @@ tracing-subscriber = "0.2.20"
 opentelemetry = { version = "0.16", default-features = false, features = ["trace","rt-tokio"] }
 opentelemetry-jaeger = { version="0.15", features=["rt-tokio"]}
 
+dhat = "0.2.2"
+
 [features]
 avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_p2p/avx2",  "tari_comms/avx2", "tari_comms_dht/avx2"]
 safe = []

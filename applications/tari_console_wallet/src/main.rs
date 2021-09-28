@@ -29,6 +29,11 @@ use tari_shutdown::Shutdown;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
+use dhat::{Dhat, DhatAlloc};
+
+#[global_allocator]
+static ALLOCATOR: DhatAlloc = DhatAlloc;
+
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
 mod automation;
@@ -42,8 +47,12 @@ pub mod wallet_modes;
 
 /// Application entry point
 fn main() {
+    let dhat = Dhat::start_heap_profiling();
     match main_inner() {
-        Ok(_) => process::exit(0),
+        Ok(_) => {
+            drop(dhat);
+            process::exit(0)
+        },
         Err(exit_code) => {
             eprintln!("{:?}", exit_code);
             error!(
@@ -52,6 +61,7 @@ fn main() {
                 exit_code.as_i32(),
                 exit_code
             );
+            drop(dhat);
             process::exit(exit_code.as_i32())
         },
     }
