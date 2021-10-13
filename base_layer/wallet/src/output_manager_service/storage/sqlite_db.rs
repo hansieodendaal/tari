@@ -46,6 +46,7 @@ use std::{
     str::from_utf8,
     sync::{Arc, RwLock},
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use tari_common_types::types::{ComSignature, Commitment, PrivateKey, PublicKey};
 use tari_core::{
     tari_utilities::hash::Hashable,
@@ -65,6 +66,41 @@ use tari_crypto::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::sqlite_db";
+
+#[derive(Clone)]
+struct DbCash {
+    table_updated: Arc<AtomicBool>,
+    scripts: Option<Vec<KnownOneSidedPaymentScript>>,
+}
+
+impl DbCash {
+    pub fn new() -> Self {
+        Self {
+            table_updated: Arc::new(AtomicBool::new(true)),
+            scripts: None,
+        }
+    }
+
+    pub fn get_scripts(&self) -> Option<Vec<KnownOneSidedPaymentScript>> {
+        self.scripts.clone()
+    }
+
+    pub fn table_updated(&mut self) -> bool {
+        let payment_scripts_updated = self.table_updated.load(Ordering::Relaxed);
+        if payment_scripts_updated {
+            self.reset_table_updated_status();
+        }
+        payment_scripts_updated
+    }
+
+    pub fn reset_table_updated_status(&mut self) {
+        self.table_updated.store(false, Ordering::Relaxed);
+    }
+
+    pub fn update_cash(&mut self, scripts: Vec<KnownOneSidedPaymentScript>) {
+        self.scripts = Some(scripts);
+    }
+}
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
