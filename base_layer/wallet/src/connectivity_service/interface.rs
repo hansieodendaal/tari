@@ -33,6 +33,8 @@ use tokio::sync::watch;
 pub trait WalletConnectivityInterface: Clone + Send + Sync + 'static {
     fn set_base_node(&mut self, base_node_peer: Peer);
 
+    async fn disconnect_base_node(&mut self, base_node_peer: Peer);
+
     fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<Peer>>;
 
     /// Obtain a BaseNodeWalletRpcClient.

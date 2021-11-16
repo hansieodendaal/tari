@@ -80,6 +80,10 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
         self.notify_base_node_set(base_node_peer);
     }
 
+    async fn disconnect_base_node(&mut self, _base_node_peer: Peer) {
+        self.send_shutdown();
+    }
+
     fn get_current_base_node_watcher(&self) -> Receiver<Option<Peer>> {
         self.base_node_watch.get_receiver()
     }

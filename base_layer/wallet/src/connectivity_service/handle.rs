@@ -33,6 +33,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 pub enum WalletConnectivityRequest {
     ObtainBaseNodeWalletRpcClient(oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>),
     ObtainBaseNodeSyncRpcClient(oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>),
+    DisconnectBaseNode(Box<Peer>),
 }
 
 #[derive(Clone)]
@@ -65,6 +66,13 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
             }
         }
         self.base_node_watch.send(Some(base_node_peer));
+    }
+
+    async fn disconnect_base_node(&mut self, base_node_peer: Peer) {
+        let _ = self
+            .sender
+            .send(WalletConnectivityRequest::DisconnectBaseNode(Box::new(base_node_peer)))
+            .await;
     }
 
     fn get_current_base_node_watcher(&self) -> watch::Receiver<Option<Peer>> {

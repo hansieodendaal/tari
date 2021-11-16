@@ -132,6 +132,9 @@ impl WalletConnectivityService {
             ObtainBaseNodeSyncRpcClient(reply) => {
                 self.handle_pool_request(reply.into()).await;
             },
+            DisconnectBaseNode(peer) => {
+                self.disconnect_base_node(peer.node_id.clone()).await;
+            },
         }
     }
 
