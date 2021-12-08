@@ -22,6 +22,7 @@
 
 use std::sync::Arc;
 
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::{commitment::HomomorphicCommitment, script};
@@ -147,7 +148,7 @@ fn chain_balance_validation() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        OutputFeatures::create_coinbase(1),
+        OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
     );
     // let _coinbase_hash = coinbase.hash();
@@ -195,7 +196,12 @@ fn chain_balance_validation() {
     let mut txn = DbTransaction::new();
 
     let v = consensus_manager.get_block_reward_at(2) + uT;
-    let (coinbase, key, _) = create_utxo(v, &factories, OutputFeatures::create_coinbase(1), &script!(Nop));
+    let (coinbase, key, _) = create_utxo(
+        v,
+        &factories,
+        OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &script!(Nop),
+    );
     let (pk, sig) = create_random_signature_from_s_key(key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
     let kernel = KernelBuilder::new()

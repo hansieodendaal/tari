@@ -892,7 +892,11 @@ where
             sender_message,
             PrivateKey::random(&mut OsRng),
             spend_key.clone(),
-            OutputFeatures::default(),
+            OutputFeatures {
+                // TODO: Hansie - supply the correct filter_byte here
+                filter_byte: 0b0000_0000,
+                ..OutputFeatures::default()
+            },
             &self.resources.factories,
             &rewind_data,
         );
@@ -902,7 +906,11 @@ where
         let unblinded_output = UnblindedOutput::new(
             amount,
             spend_key,
-            OutputFeatures::default(),
+            OutputFeatures {
+                // TODO: Hansie - supply the correct filter_byte here
+                filter_byte: 0b0000_0000,
+                ..OutputFeatures::default()
+            },
             script,
             inputs!(PublicKey::from_secret_key(self.node_identity.secret_key())),
             self.node_identity.secret_key().clone(),
@@ -1048,7 +1056,11 @@ where
             sender_message,
             PrivateKey::random(&mut OsRng),
             spend_key,
-            OutputFeatures::default(),
+            OutputFeatures {
+                // TODO: Hansie - supply the correct filter_byte here
+                filter_byte: 0b0000_0000,
+                ..OutputFeatures::default()
+            },
             &self.resources.factories,
             &rewind_data,
         );
@@ -2054,6 +2066,11 @@ where
         Ok(())
     }
 
+    fn get_filter_byte(&mut self) -> u8 {
+        // TODO: Hansie - implement the proper calculation here
+        u8::default()
+    }
+
     async fn generate_coinbase_transaction(
         &mut self,
         reward: MicroTari,
@@ -2083,9 +2100,10 @@ where
             None => {
                 // otherwise create a new coinbase tx
                 let tx_id = TxId::new_random();
+                let filter_byte = self.get_filter_byte();
                 let tx = self
                     .output_manager_service
-                    .get_coinbase_transaction(tx_id, reward, fees, block_height)
+                    .get_coinbase_transaction(tx_id, reward, fees, block_height, filter_byte)
                     .await?;
 
                 // Cancel existing unmined coinbase transactions for this blockheight

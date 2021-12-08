@@ -66,7 +66,10 @@ pub fn create_test_input(
     params.commitment_factory = factory.clone();
     params.create_input(UtxoTestParams {
         value: amount,
-        output_features: OutputFeatures::with_maturity(maturity),
+        output_features: OutputFeatures {
+            maturity,
+            ..OutputFeatures::default()
+        },
         ..Default::default()
     })
 }
@@ -405,7 +408,10 @@ pub fn create_unblinded_txos(
     let inputs = (0..input_count)
         .map(|i| {
             let mut params = UtxoTestParams {
-                output_features: OutputFeatures::with_maturity(input_maturity),
+                output_features: OutputFeatures {
+                    maturity: input_maturity,
+                    ..OutputFeatures::default()
+                },
                 ..Default::default()
             };
             if i == input_count - 1 {

@@ -4730,14 +4730,18 @@ pub unsafe extern "C" fn wallet_import_utxo(
     };
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
-    // Todo the script_lock_height can be something other than 0, for example an HTLC transaction
+    // TODO: the script_lock_height can be something other than 0, for example an HTLC transaction
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
         script!(Nop),
         inputs!(public_script_key),
         &(*source_public_key).clone(),
-        OutputFeatures::default(),
+        OutputFeatures {
+            // TODO: Hansie - supply the correct filter_byte here
+            filter_byte: 0b0000_0000,
+            ..OutputFeatures::default()
+        },
         message_string,
         ComSignature::default(),
         &(*spending_key).clone(),

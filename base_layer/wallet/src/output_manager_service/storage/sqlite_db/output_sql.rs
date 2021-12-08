@@ -76,11 +76,13 @@ pub struct OutputSql {
     pub value: i64,
     pub flags: i32,
     pub maturity: i64,
+    pub filter_byte: i32,
     pub status: i32,
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
     pub script_private_key: Vec<u8>,
+    pub script_lock_height: i64,
     pub sender_offset_public_key: Vec<u8>,
     pub metadata_signature_nonce: Vec<u8>,
     pub metadata_signature_u_key: Vec<u8>,
@@ -521,6 +523,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             asset: asset_features,
             mint_non_fungible,
             sidechain_checkpoint,
+            filter_byte: o.filter_byte as u8,
         };
         let unblinded_output = UnblindedOutput::new(
             MicroTari::from(o.value as u64),

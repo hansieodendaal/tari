@@ -52,6 +52,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             asset: features.asset.map(|a| a.try_into()).transpose()?,
             mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
+            filter_byte: features.filter_byte as u8,
         })
     }
 }

@@ -22,7 +22,7 @@
 
 use std::{panic, path::Path, sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, Rng};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{PrivateKey, PublicKey},
@@ -720,7 +720,7 @@ async fn test_import_utxo() {
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop);
     let input = inputs!(claim);
-    let features = OutputFeatures::create_coinbase(50);
+    let features = OutputFeatures::create_coinbase(50, rand::thread_rng().gen::<u8>());
 
     let p = TestParams::new();
     let utxo = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);

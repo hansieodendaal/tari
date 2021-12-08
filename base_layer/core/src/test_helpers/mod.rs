@@ -85,7 +85,11 @@ pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpe
         .with_fees(0.into())
         .with_nonce(0.into())
         .with_spend_key(block_height.into())
-        .build_with_reward(rules.consensus_constants(block_height), reward)
+        .build_with_reward(
+            rules.consensus_constants(block_height),
+            reward,
+            rand::thread_rng().gen::<u8>(),
+        )
         .unwrap();
 
     let mut block = header

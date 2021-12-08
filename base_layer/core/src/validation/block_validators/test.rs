@@ -22,6 +22,7 @@
 
 use std::sync::Arc;
 
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_crypto::script;
 use tari_test_utils::unpack_enum;
@@ -100,7 +101,11 @@ async fn it_checks_exactly_one_coinbase() {
         .with_fees(0.into())
         .with_nonce(0.into())
         .with_spend_key(42.into())
-        .build_with_reward(blockchain.rules().consensus_constants(1), coinbase.value)
+        .build_with_reward(
+            blockchain.rules().consensus_constants(1),
+            coinbase.value,
+            rand::thread_rng().gen::<u8>(),
+        )
         .unwrap();
 
     block.body.add_output(

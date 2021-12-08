@@ -398,6 +398,7 @@ impl OutputManagerHandle {
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
+        filter_byte: u8,
     ) -> Result<Transaction, OutputManagerError> {
         match self
             .handle
@@ -406,6 +407,7 @@ impl OutputManagerHandle {
                 reward,
                 fees,
                 block_height,
+                filter_byte,
             )))
             .await??
         {

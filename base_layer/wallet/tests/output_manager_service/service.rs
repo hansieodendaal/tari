@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, Rng, RngCore};
 use tari_common_types::{
     transaction::TxId,
     types::{PrivateKey, PublicKey},
@@ -408,7 +408,10 @@ async fn test_utxo_selection_no_chain_metadata() {
             &mut OsRng.clone(),
             i * amount,
             &factories.commitment,
-            Some(OutputFeatures::with_maturity(i)),
+            Some(OutputFeatures {
+                maturity: i,
+                ..OutputFeatures::default()
+            }),
         );
         oms.add_output(uo.clone(), None).await.unwrap();
     }
@@ -512,7 +515,10 @@ async fn test_utxo_selection_with_chain_metadata() {
             &mut OsRng.clone(),
             i * amount,
             &factories.commitment,
-            Some(OutputFeatures::with_maturity(i)),
+            Some(OutputFeatures {
+                maturity: i,
+                ..OutputFeatures::default()
+            }),
         );
         oms.add_output(uo.clone(), None).await.unwrap();
     }
@@ -1020,13 +1026,22 @@ async fn handle_coinbase() {
     let fees3 = MicroTari::from(500);
     let value3 = reward3 + fees3;
 
-    let _ = oms.get_coinbase_transaction(1.into(), reward1, fees1, 1).await.unwrap();
+    let _ = oms
+        .get_coinbase_transaction(1, reward1, fees1, 1, rand::thread_rng().gen::<u8>())
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value1);
-    let _tx2 = oms.get_coinbase_transaction(2.into(), reward2, fees2, 1).await.unwrap();
+    let _tx2 = oms
+        .get_coinbase_transaction(2, reward2, fees2, 1, rand::thread_rng().gen::<u8>())
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value2);
-    let tx3 = oms.get_coinbase_transaction(3.into(), reward3, fees3, 2).await.unwrap();
+    let tx3 = oms
+        .get_coinbase_transaction(3, reward3, fees3, 2, rand::thread_rng().gen::<u8>())
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(
         oms.get_balance().await.unwrap().pending_incoming_balance,
@@ -1183,9 +1198,15 @@ async fn test_txo_validation() {
 
     let _ = oms.get_recipient_transaction(sender_message).await.unwrap();
 
-    oms.get_coinbase_transaction(6.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
-        .await
-        .unwrap();
+    oms.get_coinbase_transaction(
+        6.into(),
+        MicroTari::from(15_000_000),
+        MicroTari::from(1_000_000),
+        2,
+        rand::thread_rng().gen::<u8>(),
+    )
+    .await
+    .unwrap();
 
     let mut outputs = oms_db.fetch_pending_incoming_outputs().unwrap();
     assert_eq!(outputs.len(), 3);

@@ -424,7 +424,10 @@ mod add_block {
         let prev_block = block.to_arc_block();
 
         // Different maturity so that the output hash is different in txo_hash_to_index_db
-        prev_utxo.features = OutputFeatures::with_maturity(1);
+        prev_utxo.features = OutputFeatures {
+            maturity: 1,
+            ..OutputFeatures::default()
+        };
         // Now we can reuse a commitment
         let (txns, _) = schema_to_transaction(&[TransactionSchema {
             from: vec![outputs[1].clone()],

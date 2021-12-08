@@ -153,10 +153,11 @@ impl CoinbaseBuilder {
         self,
         constants: &ConsensusConstants,
         emission_schedule: &EmissionSchedule,
+        filter_byte: u8,
     ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let reward = emission_schedule.block_reward(height);
-        self.build_with_reward(constants, reward)
+        self.build_with_reward(constants, reward, filter_byte)
     }
 
     /// Try and construct a Coinbase Transaction while specifying the block reward. The other parameters (keys, nonces
@@ -171,6 +172,7 @@ impl CoinbaseBuilder {
         self,
         constants: &ConsensusConstants,
         block_reward: MicroTari,
+        filter_byte: u8,
     ) -> Result<(Transaction, UnblindedOutput), CoinbaseBuildError> {
         let height = self.block_height.ok_or(CoinbaseBuildError::MissingBlockHeight)?;
         let total_reward = block_reward + self.fees.ok_or(CoinbaseBuildError::MissingFees)?;
@@ -179,7 +181,7 @@ impl CoinbaseBuilder {
         let spending_key = self.spend_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
         let script_private_key = self.script_key.unwrap_or_else(|| spending_key.clone());
         let script = self.script.unwrap_or_else(|| script!(Nop));
-        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
+        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), filter_byte);
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
@@ -245,7 +247,7 @@ impl CoinbaseBuilder {
 
 #[cfg(test)]
 mod test {
-    use rand::rngs::OsRng;
+    use rand::{rngs::OsRng, Rng};
     use tari_common::configuration::Network;
     use tari_common_types::types::{BlindingFactor, PrivateKey};
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, keys::SecretKey as SecretKeyTrait};
@@ -275,7 +277,11 @@ mod test {
         let (builder, rules, _) = get_builder();
         assert_eq!(
             builder
-                .build(rules.consensus_constants(0), rules.emission_schedule())
+                .build(
+                    rules.consensus_constants(0),
+                    rules.emission_schedule(),
+                    rand::thread_rng().gen::<u8>()
+                )
                 .unwrap_err(),
             CoinbaseBuildError::MissingBlockHeight
         );
@@ -287,7 +293,11 @@ mod test {
         let builder = builder.with_block_height(42);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(42), rules.emission_schedule())
+                .build(
+                    rules.consensus_constants(42),
+                    rules.emission_schedule(),
+                    rand::thread_rng().gen::<u8>()
+                )
                 .unwrap_err(),
             CoinbaseBuildError::MissingFees
         );
@@ -302,7 +312,11 @@ mod test {
         let builder = builder.with_block_height(42).with_fees(fees).with_nonce(p.nonce);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(42), rules.emission_schedule())
+                .build(
+                    rules.consensus_constants(42),
+                    rules.emission_schedule(),
+                    rand::thread_rng().gen::<u8>()
+                )
                 .unwrap_err(),
             CoinbaseBuildError::MissingSpendKey
         );
@@ -318,7 +332,11 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (tx, _unblinded_output) = builder
-            .build(rules.consensus_constants(42), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(42),
+                rules.emission_schedule(),
+                rand::thread_rng().gen::<u8>(),
+            )
             .unwrap();
         let utxo = &tx.body.outputs()[0];
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
@@ -360,7 +378,11 @@ mod test {
             .with_spend_key(p.spend_key.clone())
             .with_rewind_data(rewind_data);
         let (tx, _) = builder
-            .build(rules.consensus_constants(42), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(42),
+                rules.emission_schedule(),
+                rand::thread_rng().gen::<u8>(),
+            )
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + 145 * uT;
 
@@ -383,7 +405,11 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key);
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(42), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(42),
+                rules.emission_schedule(),
+                rand::thread_rng().gen::<u8>(),
+            )
             .unwrap();
         tx.body.outputs_mut()[0].features.maturity = 1;
         assert_eq!(
@@ -410,7 +436,11 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                rand::thread_rng().gen::<u8>(),
+            )
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
         let builder = CoinbaseBuilder::new(factories.clone());
@@ -420,7 +450,11 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (tx2, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                rand::thread_rng().gen::<u8>(),
+            )
             .unwrap();
         let mut coinbase2 = tx2.body.outputs()[0].clone();
         let mut coinbase_kernel2 = tx2.body.kernels()[0].clone();
@@ -447,7 +481,11 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key);
         let (tx3, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                rand::thread_rng().gen::<u8>(),
+            )
             .unwrap();
         assert!(tx3
             .body
@@ -473,7 +511,11 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key.clone());
         let (mut tx, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                rand::thread_rng().gen::<u8>(),
+            )
             .unwrap();
         let block_reward = rules.emission_schedule().block_reward(42) + missing_fee;
         let builder = CoinbaseBuilder::new(factories.clone());
@@ -483,7 +525,11 @@ mod test {
             .with_nonce(p.nonce.clone())
             .with_spend_key(p.spend_key);
         let (tx2, _) = builder
-            .build(rules.consensus_constants(0), rules.emission_schedule())
+            .build(
+                rules.consensus_constants(0),
+                rules.emission_schedule(),
+                rand::thread_rng().gen::<u8>(),
+            )
             .unwrap();
         let mut tx_kernel_test = tx.clone();
 

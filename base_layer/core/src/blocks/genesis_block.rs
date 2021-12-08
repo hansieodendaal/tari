@@ -87,6 +87,7 @@ fn get_igor_genesis_block_raw() -> Block {
             features: OutputFeatures {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
+                filter_byte: 0b0000_0000,
                .. Default::default()
             },
             commitment: Commitment::from_hex(
@@ -173,6 +174,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
             features: OutputFeatures {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
+                filter_byte: 0b0000_0000,
                 ..Default::default()
             },
             commitment: Commitment::from_hex(

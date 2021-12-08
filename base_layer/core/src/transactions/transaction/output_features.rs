@@ -58,11 +58,22 @@ pub struct OutputFeatures {
     pub asset: Option<AssetOutputFeatures>,
     pub mint_non_fungible: Option<MintNonFungibleFeatures>,
     pub sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
+    /// The filter byte - not consensus critical - can help reduce the bandwidth with wallet recovery or in other
+    /// instances when a wallet needs to request the complete UTXO set from a base node.
+    pub filter_byte: u8,
 }
 
 impl OutputFeatures {
     /// The version number to use in consensus encoding. In future, this value could be dynamic.
     const CONSENSUS_ENCODING_VERSION: u8 = 0;
+
+    pub fn new(flags: OutputFlags, maturity: u64, filter_byte: u8) -> Self {
+        Self {
+            flags,
+            maturity,
+            filter_byte,
+        }
+    }
 
     /// Encodes output features using deprecated bincode encoding
     pub fn to_v1_bytes(&self) -> Vec<u8> {
@@ -82,18 +93,11 @@ impl OutputFeatures {
         buf
     }
 
-    pub fn create_coinbase(maturity_height: u64) -> OutputFeatures {
+    pub fn create_coinbase(maturity_height: u64, filter_byte: u8) -> OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
             maturity: maturity_height,
-            ..Default::default()
-        }
-    }
-
-    /// Create an `OutputFeatures` with the given maturity and all other values at their default setting
-    pub fn with_maturity(maturity: u64) -> OutputFeatures {
-        OutputFeatures {
-            maturity,
+            filter_byte,
             ..Default::default()
         }
     }
@@ -182,6 +186,7 @@ impl ConsensusEncoding for OutputFeatures {
         let mut written = writer.write_varint(Self::CONSENSUS_ENCODING_VERSION)?;
         written += writer.write_varint(self.maturity)?;
         written += self.flags.consensus_encode(writer)?;
+        written += writer.write_varint(self.filter_byte)?;
         Ok(written)
     }
 }
@@ -190,7 +195,8 @@ impl ConsensusEncodingSized for OutputFeatures {
     fn consensus_encode_exact_size(&self) -> usize {
         Self::CONSENSUS_ENCODING_VERSION.required_space() +
             self.flags.consensus_encode_exact_size() +
-            self.maturity.required_space()
+            self.maturity.required_space() +
+            self.filter_byte.required_space()
     }
 }
 
@@ -211,9 +217,11 @@ impl ConsensusDecoding for OutputFeatures {
         // Decode safety: read_varint will stop reading the varint after 10 bytes
         let maturity = reader.read_varint()?;
         let flags = OutputFlags::consensus_decode(reader)?;
+        let filter_byte = reader.read_varint()?;
         Ok(Self {
             flags,
             maturity,
+            filter_byte,
             ..Default::default()
         })
     }
@@ -230,6 +238,7 @@ impl Default for OutputFeatures {
             asset: None,
             mint_non_fungible: None,
             sidechain_checkpoint: None,
+            filter_byte: 0b0000_0000,
         }
     }
 }
@@ -250,8 +259,8 @@ impl Display for OutputFeatures {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "OutputFeatures: Flags = {:?}, Maturity = {}",
-            self.flags, self.maturity
+            "OutputFeatures: Flags = {:?}, Maturity = {}, Filter byte = {:#08b}",
+            self.flags, self.maturity, self.filter_byte
         )
     }
 }

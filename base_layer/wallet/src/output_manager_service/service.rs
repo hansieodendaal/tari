@@ -225,8 +225,8 @@ where
                 .get_recipient_transaction(tsm)
                 .await
                 .map(OutputManagerResponse::RecipientTransactionGenerated),
-            OutputManagerRequest::GetCoinbaseTransaction((tx_id, reward, fees, block_height)) => self
-                .get_coinbase_transaction(tx_id, reward, fees, block_height)
+            OutputManagerRequest::GetCoinbaseTransaction((tx_id, reward, fees, block_height, filter_byte)) => self
+                .get_coinbase_transaction(tx_id, reward, fees, block_height, filter_byte)
                 .await
                 .map(OutputManagerResponse::CoinbaseTransaction),
             OutputManagerRequest::PrepareToSendTransaction {
@@ -670,7 +670,11 @@ where
             unique_id,
             fee_per_gram,
         );
-        let output_features = OutputFeatures::default();
+        let output_features = OutputFeatures {
+            // TODO: Hansie - supply the correct filter_byte here
+            filter_byte: 0b0000_0000,
+            ..OutputFeatures::default()
+        };
         let metadata_byte_size = output_features.consensus_encode_exact_size() +
             ConsensusEncodingWrapper::wrap(&recipient_script).consensus_encode_exact_size();
 
@@ -782,6 +786,7 @@ where
         reward: MicroTari,
         fees: MicroTari,
         block_height: u64,
+        filter_byte: u8,
     ) -> Result<Transaction, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -803,7 +808,7 @@ where
             .with_script(script!(Nop))
             .with_nonce(nonce)
             .with_rewind_data(self.resources.master_key_manager.rewind_data().clone())
-            .build_with_reward(&self.resources.consensus_constants, reward)?;
+            .build_with_reward(&self.resources.consensus_constants, reward, filter_byte)?;
 
         let output = DbUnblindedOutput::from_unblinded_output(unblinded_output, &self.resources.factories, None)?;
 
@@ -1001,6 +1006,8 @@ where
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
         let output_features = OutputFeatures {
+            // TODO: Hansie - supply the correct filter_byte here
+            filter_byte: 0b0000_0000,
             unique_id: unique_id.clone(),
             ..Default::default()
         };
@@ -1305,7 +1312,11 @@ where
         );
         let output_count = split_count;
         let script = script!(Nop);
-        let output_features = OutputFeatures::default();
+        let output_features = OutputFeatures {
+            // TODO: Hansie - supply the correct filter_byte here
+            filter_byte: 0b0000_0000,
+            ..OutputFeatures::default()
+        };
         let metadata_byte_size = output_features.consensus_encode_exact_size() +
             ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size();
 

@@ -97,7 +97,7 @@ pub fn hash_output(features: &OutputFeatures, commitment: &Commitment, script: &
 
 #[cfg(test)]
 mod test {
-    use rand::{self, rngs::OsRng};
+    use rand::{self, rngs::OsRng, Rng};
     use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProof, Signature};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
@@ -149,9 +149,14 @@ mod test {
 
     #[test]
     fn with_maturity() {
-        let features = OutputFeatures::with_maturity(42);
+        let features = OutputFeatures {
+            // TODO: Hansie - supply the correct filter_byte here
+            maturity: 42,
+            ..OutputFeatures::default()
+        };
         assert_eq!(features.maturity, 42);
         assert_eq!(features.flags, OutputFlags::empty());
+        assert_eq!(features.filter_byte, 0b0000_0000);
     }
 
     #[test]
@@ -225,7 +230,7 @@ mod test {
 
         tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
         assert!(tx_output.verify_metadata_signature().is_ok());
-        tx_output.features = OutputFeatures::create_coinbase(0);
+        tx_output.features = OutputFeatures::create_coinbase(0, rand::thread_rng().gen::<u8>());
         assert!(tx_output.verify_metadata_signature().is_err());
 
         tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
@@ -500,29 +505,29 @@ mod test {
 
         #[test]
         fn consensus_encode_minimal() {
-            let features = OutputFeatures::with_maturity(0);
+            let features = OutputFeatures::default();
             let mut buf = Vec::new();
             let written = features.consensus_encode(&mut buf).unwrap();
-            assert_eq!(buf.len(), 3);
-            assert_eq!(written, 3);
+            assert_eq!(buf.len(), 4);
+            assert_eq!(written, 4);
         }
 
         #[test]
         fn consensus_encode_decode() {
-            let features = OutputFeatures::create_coinbase(u64::MAX);
+            let features = OutputFeatures::create_coinbase(u64::MAX, u8::MAX);
             let known_size = features.consensus_encode_exact_size();
+            assert_eq!(known_size, 14);
             let mut buf = Vec::with_capacity(known_size);
-            assert_eq!(known_size, 12);
             let written = features.consensus_encode(&mut buf).unwrap();
-            assert_eq!(buf.len(), 12);
-            assert_eq!(written, 12);
+            assert_eq!(buf.len(), 14);
+            assert_eq!(written, 14);
             let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
             assert_eq!(features, decoded_features);
         }
 
         #[test]
         fn consensus_decode_bad_flags() {
-            let data = [0x00u8, 0x00, 0x02];
+            let data = [0x00u8, 0x00, 0x02, 0b0000_0000];
             let features = OutputFeatures::consensus_decode(&mut &data[..]).unwrap();
             // Assert the flag data is preserved
             assert_eq!(features.flags.bits() & 0x02, 0x02);
