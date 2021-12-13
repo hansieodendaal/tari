@@ -96,12 +96,13 @@ table! {
         value -> BigInt,
         flags -> Integer,
         maturity -> BigInt,
-        // filter_byte -> Integer,
+        filter_byte -> Integer,
         status -> Integer,
         hash -> Nullable<Binary>,
         script -> Binary,
         input_data -> Binary,
         script_private_key -> Binary,
+        script_lock_height -> BigInt,
         sender_offset_public_key -> Binary,
         metadata_signature_nonce -> Binary,
         metadata_signature_u_key -> Binary,
@@ -120,9 +121,8 @@ table! {
         features_parent_public_key -> Nullable<Binary>,
         features_unique_id -> Nullable<Binary>,
         features_sidechain_committee -> Nullable<Text>,
-        script_lock_height -> BigInt,
-        spending_priority -> Integer,
         features_asset_json -> Nullable<Text>,
+        spending_priority -> Integer,
     }
 }
 
