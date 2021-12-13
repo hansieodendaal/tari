@@ -1027,19 +1027,19 @@ async fn handle_coinbase() {
     let value3 = reward3 + fees3;
 
     let _ = oms
-        .get_coinbase_transaction(1, reward1, fees1, 1, rand::thread_rng().gen::<u8>())
+        .get_coinbase_transaction(TxId::from(1), reward1, fees1, 1, rand::thread_rng().gen::<u8>())
         .await
         .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value1);
     let _tx2 = oms
-        .get_coinbase_transaction(2, reward2, fees2, 1, rand::thread_rng().gen::<u8>())
+        .get_coinbase_transaction(TxId::from(2), reward2, fees2, 1, rand::thread_rng().gen::<u8>())
         .await
         .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value2);
     let tx3 = oms
-        .get_coinbase_transaction(3, reward3, fees3, 2, rand::thread_rng().gen::<u8>())
+        .get_coinbase_transaction(TxId::from(3), reward3, fees3, 2, rand::thread_rng().gen::<u8>())
         .await
         .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);

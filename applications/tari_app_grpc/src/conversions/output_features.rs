@@ -68,6 +68,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
+            filter_byte: features.filter_byte as u32,
         }
     }
 }

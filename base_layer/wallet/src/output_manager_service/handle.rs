@@ -53,7 +53,7 @@ pub enum OutputManagerRequest {
     AddUnvalidatedOutput((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
-    GetCoinbaseTransaction((TxId, MicroTari, MicroTari, u64)),
+    GetCoinbaseTransaction((TxId, MicroTari, MicroTari, u64, u8)),
     ConfirmPendingTransaction(TxId),
     PrepareToSendTransaction {
         tx_id: TxId,

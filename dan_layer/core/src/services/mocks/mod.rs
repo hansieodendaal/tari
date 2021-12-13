@@ -147,6 +147,12 @@ impl<TEvent: Event> MockEventsPublisher<TEvent> {
     }
 }
 
+impl<TEvent: Event> Default for MockEventsPublisher<TEvent> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<TEvent: Event> EventsPublisher<TEvent> for MockEventsPublisher<TEvent> {
     fn publish(&mut self, event: TEvent) {
         self.events.lock().unwrap().push_back(event)

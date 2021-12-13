@@ -68,6 +68,12 @@ impl<TAddr: NodeAddressable, TPayload: Payload> MockInboundConnectionService<TAd
     }
 }
 
+impl<TAddr: NodeAddressable, TPayload: Payload> Default for MockInboundConnectionService<TAddr, TPayload> {
+     fn default() -> Self {
+         Self::new()
+     }
+}
+
 pub fn mock_outbound<TAddr: NodeAddressable, TPayload: Payload>(
     committee: Vec<TAddr>,
 ) -> MockOutboundService<TAddr, TPayload> {

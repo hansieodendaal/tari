@@ -72,6 +72,7 @@ impl OutputFeatures {
             flags,
             maturity,
             filter_byte,
+            ..Default::default()
         }
     }
 
