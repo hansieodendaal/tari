@@ -35,7 +35,7 @@ use futures::{
     SinkExt,
 };
 use prost::Message;
-use rand::{rngs::OsRng};
+use rand::rngs::OsRng;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::{TransactionDirection, TransactionStatus, TxId},
