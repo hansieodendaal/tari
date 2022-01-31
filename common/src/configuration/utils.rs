@@ -87,7 +87,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 
     // Wallet settings
     cfg.set_default("wallet.grpc_enabled", false).unwrap();
-    cfg.set_default("wallet.grpc_address", "127.0.0.1:18043").unwrap();
+    cfg.set_default("wallet.grpc_address", "127.0.0.1:18143").unwrap();
     cfg.set_default(
         "wallet.wallet_db_file",
         default_subdir("wallet/wallet.dat", Some(&bootstrap.base_path)),
@@ -158,56 +158,55 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.mainnet.allow_test_addresses", false)
         .unwrap();
-    cfg.set_default("base_node.mainnet.grpc_base_node_address", "127.0.0.1:18142")
+    cfg.set_default("base_node.mainnet.grpc_address", "127.0.0.1:18142")
         .unwrap();
-    cfg.set_default("wallet.grpc_address", "127.0.0.1:18143").unwrap();
     cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
         .unwrap();
 
-    //---------------------------------- Weatherwax Defaults --------------------------------------------//
+    //---------------------------------- Dibbler Defaults --------------------------------------------//
 
-    cfg.set_default("base_node.weatherwax.db_type", "lmdb").unwrap();
-    cfg.set_default("base_node.weatherwax.orphan_storage_capacity", 720)
+    cfg.set_default("base_node.dibbler.db_type", "lmdb").unwrap();
+    cfg.set_default("base_node.dibbler.orphan_storage_capacity", 720)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.orphan_db_clean_out_threshold", 0)
+    cfg.set_default("base_node.dibbler.orphan_db_clean_out_threshold", 0)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.pruning_horizon", 0).unwrap();
-    cfg.set_default("base_node.weatherwax.pruned_mode_cleanup_interval", 50)
+    cfg.set_default("base_node.dibbler.pruning_horizon", 0).unwrap();
+    cfg.set_default("base_node.dibbler.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 10000)
+    cfg.set_default("base_node.dibbler.flood_ban_max_msg_count", 10000)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.peer_seeds", Vec::<String>::new())
+    cfg.set_default("base_node.dibbler.peer_seeds", Vec::<String>::new())
         .unwrap();
     cfg.set_default(
-        "base_node.weatherwax.data_dir",
-        default_subdir("weatherwax/", Some(&bootstrap.base_path)),
+        "base_node.dibbler.data_dir",
+        default_subdir("dibbler/", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.weatherwax.base_node_tor_identity_file",
+        "base_node.dibbler.base_node_tor_identity_file",
         default_subdir("config/base_node_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.weatherwax.console_wallet_identity_file",
+        "base_node.dibbler.console_wallet_identity_file",
         default_subdir("config/console_wallet_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.weatherwax.console_wallet_tor_identity_file",
+        "base_node.dibbler.console_wallet_tor_identity_file",
         default_subdir("config/console_wallet_tor.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
     cfg.set_default(
-        "base_node.weatherwax.base_node_identity_file",
+        "base_node.dibbler.base_node_identity_file",
         default_subdir("config/base_node_id.json", Some(&bootstrap.base_path)),
     )
     .unwrap();
 
-    cfg.set_default("base_node.weatherwax.allow_test_addresses", false)
+    cfg.set_default("base_node.dibbler.allow_test_addresses", false)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.weatherwax.grpc_base_node_address", "127.0.0.1:18142")
+    cfg.set_default("base_node.dibbler.grpc_enabled", false).unwrap();
+    cfg.set_default("base_node.dibbler.grpc_address", "127.0.0.1:18142")
         .unwrap();
 
     //---------------------------------- Igor Defaults --------------------------------------------//
@@ -222,7 +221,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.igor.flood_ban_max_msg_count", 10000)
         .unwrap();
     cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
-    cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
+    cfg.set_default("base_node.igor.grpc_address", "127.0.0.1:18142")
         .unwrap();
 
     set_common_network_defaults(&mut cfg);
@@ -235,7 +234,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 }
 
 fn set_common_network_defaults(cfg: &mut Config) {
-    for network in ["mainnet", "weatherwax", "igor", "localnet"] {
+    for network in ["mainnet", "igor", "localnet"] {
         let key = format!("base_node.{}.dns_seeds_name_server", network);
         cfg.set_default(&key, "1.1.1.1:853/cloudflare-dns.com").unwrap();
 
@@ -279,11 +278,6 @@ fn set_common_network_defaults(cfg: &mut Config) {
 fn set_stratum_transcoder_defaults(cfg: &mut Config) {
     cfg.set_default("stratum_transcoder.mainnet.transcoder_host_address", "127.0.0.1:7879")
         .unwrap();
-    cfg.set_default(
-        "stratum_transcoder.weatherwax.transcoder_host_address",
-        "127.0.0.1:7879",
-    )
-    .unwrap();
     cfg.set_default("stratum_transcoder.igor.transcoder_host_address", "127.0.0.1:7879")
         .unwrap();
     cfg.set_default("stratum_transcoder.dibbler.transcoder_host_address", "127.0.0.1:7879")
@@ -298,6 +292,8 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
+    cfg.set_default("merge_mining_proxy.mainnet.proxy_submit_to_origin", true)
+        .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", "false")
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_username", "")
@@ -307,21 +303,21 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
         .unwrap();
     cfg.set_default(
-        "merge_mining_proxy.weatherwax.monerod_url",
+        "merge_mining_proxy.dibbler.monerod_url",
         "http://monero-stagenet.exan.tech:38081",
     )
     .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.proxy_host_address", "127.0.0.1:7878")
+    cfg.set_default("merge_mining_proxy.dibbler.proxy_host_address", "127.0.0.1:7878")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.proxy_submit_to_origin", true)
+    cfg.set_default("merge_mining_proxy.dibbler.proxy_submit_to_origin", true)
         .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_use_auth", "false")
+    cfg.set_default("merge_mining_proxy.dibbler.monerod_use_auth", "false")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_username", "")
+    cfg.set_default("merge_mining_proxy.dibbler.monerod_username", "")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_password", "")
+    cfg.set_default("merge_mining_proxy.dibbler.monerod_password", "")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.wait_for_initial_sync_at_startup", true)
+    cfg.set_default("merge_mining_proxy.dibbler.wait_for_initial_sync_at_startup", true)
         .unwrap();
     cfg.set_default(
         "merge_mining_proxy.igor.monerod_url",
@@ -337,18 +333,6 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
     cfg.set_default("merge_mining_proxy.igor.monerod_username", "").unwrap();
     cfg.set_default("merge_mining_proxy.igor.monerod_password", "").unwrap();
     cfg.set_default("merge_mining_proxy.igor.wait_for_initial_sync_at_startup", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.proxy_host_address", "127.0.0.1:7878")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.proxy_submit_to_origin", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.monerod_use_auth", "false")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.monerod_username", "")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.monerod_password", "")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.wait_for_initial_sync_at_startup", true)
         .unwrap();
 }
 
@@ -369,11 +353,11 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
         "/ip4/0.0.0.0/tcp/18088",
     )?;
     cfg.set_default(
-        &format!("{}.weatherwax.tcp_listener_address", ApplicationType::BaseNode),
+        &format!("{}.dibbler.tcp_listener_address", ApplicationType::BaseNode),
         "/ip4/0.0.0.0/tcp/18199",
     )?;
     cfg.set_default(
-        &format!("{}.weatherwax.tcp_listener_address", ApplicationType::ConsoleWallet),
+        &format!("{}.dibbler.tcp_listener_address", ApplicationType::ConsoleWallet),
         "/ip4/0.0.0.0/tcp/18198",
     )?;
     cfg.set_default(
@@ -385,11 +369,11 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
         "/ip4/0.0.0.0/tcp/18098",
     )?;
     cfg.set_default(
-        &format!("{}.weatherwax.socks5_listener_address", ApplicationType::BaseNode),
+        &format!("{}.dibbler.socks5_listener_address", ApplicationType::BaseNode),
         "/ip4/0.0.0.0/tcp/18199",
     )?;
     cfg.set_default(
-        &format!("{}.weatherwax.socks5_listener_address", ApplicationType::ConsoleWallet),
+        &format!("{}.dibbler.socks5_listener_address", ApplicationType::ConsoleWallet),
         "/ip4/0.0.0.0/tcp/18198",
     )?;
 
@@ -413,26 +397,26 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
         )?;
         cfg.set_default(&format!("{}.mainnet.socks5_auth", app), "none")?;
 
-        // weatherwax
-        cfg.set_default(&format!("{}.weatherwax.transport", app), "tor")?;
+        // dibbler
+        cfg.set_default(&format!("{}.dibbler.transport", app), "tor")?;
 
         cfg.set_default(
-            &format!("{}.weatherwax.tor_control_address", app),
+            &format!("{}.dibbler.tor_control_address", app),
             "/ip4/127.0.0.1/tcp/9051",
         )?;
-        cfg.set_default(&format!("{}.weatherwax.tor_control_auth", app), "none")?;
+        cfg.set_default(&format!("{}.dibbler.tor_control_auth", app), "none")?;
         cfg.set_default(
-            &format!("{}.weatherwax.tor_forward_address", app),
+            &format!("{}.dibbler.tor_forward_address", app),
             "/ip4/127.0.0.1/tcp/0",
         )?;
-        cfg.set_default(&format!("{}.weatherwax.tor_onion_port", app), "18141")?;
+        cfg.set_default(&format!("{}.dibbler.tor_onion_port", app), "18141")?;
 
         cfg.set_default(
-            &format!("{}.weatherwax.socks5_proxy_address", app),
+            &format!("{}.dibbler.socks5_proxy_address", app),
             "/ip4/0.0.0.0/tcp/9150",
         )?;
 
-        cfg.set_default(&format!("{}.weatherwax.socks5_auth", app), "none")?;
+        cfg.set_default(&format!("{}.dibbler.socks5_auth", app), "none")?;
 
         // igor
         cfg.set_default(&format!("{}.igor.transport", app), "tor")?;
@@ -445,24 +429,6 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
         cfg.set_default(&format!("{}.igor.socks5_proxy_address", app), "/ip4/0.0.0.0/tcp/9150")?;
 
         cfg.set_default(&format!("{}.igor.socks5_auth", app), "none")?;
-
-        // dibbler
-        cfg.set_default(&format!("{}.dibbler.transport", app), "tor")?;
-
-        cfg.set_default(
-            &format!("{}.dibbler.tor_control_address", app),
-            "/ip4/127.0.0.1/tcp/9051",
-        )?;
-        cfg.set_default(&format!("{}.dibbler.tor_control_auth", app), "none")?;
-        cfg.set_default(&format!("{}.dibbler.tor_forward_address", app), "/ip4/127.0.0.1/tcp/0")?;
-        cfg.set_default(&format!("{}.dibbler.tor_onion_port", app), "18141")?;
-
-        cfg.set_default(
-            &format!("{}.dibbler.socks5_proxy_address", app),
-            "/ip4/0.0.0.0/tcp/9150",
-        )?;
-
-        cfg.set_default(&format!("{}.dibbler.socks5_auth", app), "none")?;
     }
     Ok(())
 }

@@ -60,7 +60,7 @@ tcp_listener_address = "/dns4/base_node/tcp/18189"
 tor_socks_address_override = "/dns4/tor/tcp/9050"
 tor_control_address = "/ip4/tor/tcp/9051"
 grpc_enabled = true
-grpc_base_node_address = "0.0.0.0:18142"
+grpc_address = "0.0.0.0:18142"
 
 
 [base_node.igor]

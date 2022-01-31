@@ -33,7 +33,8 @@ services:
       TARI_BASE_NODE__DIBBLER__TOR_SOCKS_ADDRESS_OVERRIDE: "/dns4/tor/tcp/9050"
       TARI_BASE_NODE__DIBBLER__TOR_FORWARD_ADDRESS: "/dns4/base_node/tcp/18189"
       TARI_BASE_NODE__DIBBLER__TCP_LISTENER_ADDRESS: "/dns4/base_node/tcp/18189"
-      TARI_BASE_NODE__DIBBLER__GRPC_BASE_NODE_ADDRESS: "0.0.0.0:18142"
+      # TODO: Should this not be `"/ip4/0.0.0.0/tcp/18142"`?
+      TARI_BASE_NODE__DIBBLER__GRPC_ADDRESS: "0.0.0.0:18142"
       TARI_BASE_NODE__DIBBLER__GRPC_ENABLED: "1"
     ports:
       - 18189:18189
@@ -69,7 +70,9 @@ services:
       TARI_WALLET__DIBBLER__TOR_SOCKS_ADDRESS_OVERRIDE: "/dns4/tor/tcp/9050"
       TARI_WALLET__DIBBLER__TOR_FORWARD_ADDRESS: "/dns4/wallet/tcp/18188"
       TARI_WALLET__DIBBLER__TCP_LISTENER_ADDRESS: "/dns4/wallet/tcp/18188"
-      TARI_BASE_NODE__DIBBLER__GRPC_CONSOLE_WALLET_ADDRESS: "0.0.0.0:18143"
+      # TODO: Should this not be `"/ip4/0.0.0.0/tcp/18143"`?
+      TARI_WALLET__DIBBLER__GRPC_ADDRESS: "0.0.0.0:18143"
+      TARI_WALLET__DIBBLER__GRPC_ENABLED: "1"
     command: ["--non-interactive"]
     ports:
       - 18188:18188
@@ -97,8 +100,7 @@ services:
       TARI_NETWORK: ${TARI_NETWORK}
       TARI_MINING_NODE__NUM_MINING_THREADS: 2
       TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1
-      TARI_BASE_NODE__DIBBLER__GRPC_BASE_NODE_ADDRESS: "/dns4/base_node/tcp/18142"
-      TARI_BASE_NODE__DIBBLER__GRPC_CONSOLE_WALLET_ADDRESS: "/dns4/wallet/tcp/18143"
+      TARI_BASE_NODE__DIBBLER__GRPC_ADDRESS: "/dns4/base_node/tcp/18142"
       TARI_WALLET__GRPC_ADDRESS: "/dns4/wallet/tcp/18143"
     command: [ ]
     depends_on:
@@ -155,9 +157,8 @@ services:
       APP_EXEC: tari_merge_mining_proxy
       WAIT_FOR_TOR: 0
       TARI_NETWORK: ${TARI_NETWORK}
-      TARI_BASE_NODE__DIBBLER__GRPC_BASE_NODE_ADDRESS: "/dns4/base_node/tcp/18142"
-      TARI_BASE_NODE__DIBBLER__GRPC_CONSOLE_WALLET_ADDRESS: "/dns4/wallet/tcp/18143"
-      TARI_WALLET__GRPC_ADDRESS: "/dns4/wallet/tcp/18143"
+      TARI_BASE_NODE__DIBBLER__GRPC_ADDRESS: "/dns4/base_node/tcp/18142"
+      TARI_WALLET__DIBBLER__GRPC_ADDRESS: "/dns4/wallet/tcp/18143"
       TARI_MERGE_MINING_PROXY__DIBBLER__MONEROD_URL: ${TARI_MONEROD_URL:-["http://stagenet.community.xmr.to:38081","http://monero-stagenet.exan.tech:38081","http://stagenet.xmr-tw.org:38081","http://xmr-lux.boldsuck.org:38081","http://singapore.node.xmr.pm:38081"]}
       TARI_MERGE_MINING_PROXY__DIBBLER__MONEROD_USERNAME: ${TARI_MONEROD_USERNAME}
       TARI_MERGE_MINING_PROXY__DIBBLER__MONEROD_PASSWORD: ${TARI_MONEROD_PASSWORD}

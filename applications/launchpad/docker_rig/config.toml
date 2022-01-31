@@ -85,7 +85,7 @@ console_wallet_tor_identity_file = "config/igor/console_wallet_tor.json"
 
 # Do these go here or in common?
 grpc_enabled = true
-grpc_base_node_address = "0.0.0.0:18142"
+grpc_address = "/ip4/0.0.0.0/tcp/18142"
 
 
 [mempool.igor]
@@ -283,7 +283,7 @@ tor_onion_port = 18141
 #num_mining_threads=8
 
 # GRPC address of base node
-# Default: value from `base_node.grpc_base_node_address`
+# Default: value from `base_node.grpc_address`
 #base_node_grpc_address = "127.0.0.1:18142"
 
 # GRPC address of console wallet

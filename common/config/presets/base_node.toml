@@ -203,7 +203,12 @@ base_node_tor_identity_file = "config/base_node_tor.json"
 # closely mirror how much block space they take up
 #weight_tx_skip_count = 20
 
-# Configuration options for testnet Igor
+########################################################################################################################
+#                                                                                                                      #
+#                                          Base Node Configuration Options (alternate test environment)                #
+#                                                                                                                      #
+########################################################################################################################
+
 [base_node.igor]
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
@@ -223,7 +228,7 @@ db_type = "lmdb"
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
 
-# The amount of messages that will be permitted in the flood ban timespan of 100s (Default weatherwax = 1000,
+# The amount of messages that will be permitted in the flood ban timespan of 100s (Default testnet = 1000)
 # default mainnet = 10000)
 flood_ban_max_msg_count = 10000
 
@@ -264,7 +269,7 @@ allow_test_addresses = false
 grpc_enabled = true
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 # Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-grpc_base_node_address = "127.0.0.1:18142"
+grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # A path to the file that stores your node identity and secret key
 base_node_identity_file = "config/base_node_id.json"
@@ -330,9 +335,10 @@ base_node_tor_identity_file = "config/base_node_tor.json"
 
 ########################################################################################################################
 #                                                                                                                      #
-#                                             Mempool Configuration Options                                            #
+#                                             Mempool Configuration Options (alternate test environment)               #
 #                                                                                                                      #
 ########################################################################################################################
+
 [mempool.igor]
 
 # The maximum number of transactions that can be stored in the Unconfirmed Transaction pool. This is the main waiting

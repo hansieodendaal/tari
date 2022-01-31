@@ -395,7 +395,7 @@ impl LaunchpadConfig {
                 ),
                 format!("TARI_BASE_NODE__{}__GRPC_ENABLED=1", self.tari_network.upper_case()),
                 format!(
-                    "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=0.0.0.0:18142",
+                    "TARI_BASE_NODE__{}__GRPC_ADDRESS=0.0.0.0:18142",
                     self.tari_network.upper_case()
                 ),
                 "APP_NAME=base_node".to_string(),
@@ -459,7 +459,7 @@ impl LaunchpadConfig {
                 format!("TARI_MINING_NODE__NUM_MINING_THREADS: {}", config.num_mining_threads),
                 "TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1".to_string(),
                 format!(
-                    "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=/dns4/base_node/tcp/18142",
+                    "TARI_BASE_NODE__{}__GRPC_ADDRESS=/dns4/base_node/tcp/18142",
                     self.tari_network.upper_case()
                 ),
                 "TARI_WALLET__GRPC_ADDRESS=/dns4/wallet/tcp/18143".to_string(),
@@ -476,7 +476,7 @@ impl LaunchpadConfig {
                 "APP_NAME=mm_proxy".to_string(),
                 "APP_EXEC=tari_merge_mining_proxy".to_string(),
                 format!(
-                    "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=/dns4/base_node/tcp/18142",
+                    "TARI_BASE_NODE__{}__GRPC_ADDRESS=/dns4/base_node/tcp/18142",
                     self.tari_network.upper_case()
                 ),
                 "TARI_WALLET__GRPC_ADDRESS=/dns4/wallet/tcp/18143".to_string(),

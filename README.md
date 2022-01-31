@@ -444,7 +444,7 @@ grpc_address = "127.0.0.1:18143"
 transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
-grpc_base_node_address = "127.0.0.1:18142"
+grpc_address = "127.0.0.1:18142"
 ```
 
 For Tari Stratum Transcoder:
@@ -468,7 +468,7 @@ For the Tari Mining Node there are some additional settings under section **`min
 #num_mining_threads=8
 
 # GRPC address of base node
-# Default: value from `base_node.grpc_base_node_address`
+# Default: value from `base_node.grpc_address`
 #base_node_grpc_address = "127.0.0.1:18142"
 
 # GRPC address of console wallet
@@ -617,7 +617,7 @@ they are not enabled already:
   transpo*_r_*t = "tor"
   allow_test_addresses = false
   grpc_enabled = true
-  grpc_base_node_address = "127.0.0.1:18142"
+  grpc_address = "127.0.0.1:18142"
   ```
 
 And then depending on if you are using solo mining or self-select mining you will use one of the following:

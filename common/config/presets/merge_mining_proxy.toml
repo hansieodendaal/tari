@@ -4,7 +4,7 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-[merge_mining_proxy.dibbler]
+[merge_mining_proxy]
 
 # URL to monerod
 monerod_url = [ # stagenet
@@ -15,6 +15,8 @@ monerod_url = [ # stagenet
     "http://singapore.node.xmr.pm:38081",
 ]
 #monerod_url = [ # mainnet
+#    "http://node.xmrig.com:18081",
+#    "http://monero.exan.tech:18081",
 #    "http://18.132.124.81:18081",
 #    "http://xmr.support:18081",
 #    "http://node1.xmr-tw.org:18081",
@@ -39,12 +41,13 @@ monerod_username = ""
 # Password for curl
 monerod_password = ""
 
+# GRPC address of base node
+base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# GRPC address of console wallet
+wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
+
 # The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
 # or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
 # accepted. (Default value = true; will wait for base node initial sync).
 #wait_for_initial_sync_at_startup = true
-
-[merge_mining_proxy]
-monerod_use_auth = false
-monerod_username = ""
-monerod_password = ""
