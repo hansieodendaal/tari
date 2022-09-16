@@ -570,7 +570,11 @@ where
                                     target: LOG_TARGET,
                                     "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                                 );
-                                if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationFailure(id))) {
+                                let event_payload = match error{
+                                    OutputManagerError::InconsistentBaseNodeDataError(_)|OutputManagerError::BaseNodeChanged|OutputManagerError::Shutdown|OutputManagerError::RpcError(_) => OutputManagerEvent::TxoValidationCommunicationFailure(id),
+                                    _ => OutputManagerEvent::TxoValidationInternalFailure(id),
+                                };
+                                if let Err(e) = event_publisher.send(Arc::new(event_payload)) {
                                     debug!(
                                         target: LOG_TARGET,
                                         "Error sending event because there are no subscribers: {:?}", e

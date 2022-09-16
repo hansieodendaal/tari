@@ -171,7 +171,7 @@ where
                 {
                     return Err(OutputManagerProtocolError::new(
                         self.operation_id,
-                        OutputManagerError::InconsistentDataError(
+                        OutputManagerError::InconsistentBaseNodeDataError(
                             "`deleted_positions`, `blocks_deleted_in` and `heights_deleted_at` should be the same \
                              length",
                         ),
