@@ -36,7 +36,7 @@ use crate::{
     error::MmProxyError,
 };
 
-const LOG_TARGET: &str = "minotari_mm_proxy::proxy::block_template_protocol";
+const LOG_TARGET: &str = "mm_proxy::block_template_protocol";
 
 /// Structure holding grpc connections.
 pub struct BlockTemplateProtocol<'a> {

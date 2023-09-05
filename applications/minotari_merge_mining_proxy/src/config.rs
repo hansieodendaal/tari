@@ -51,14 +51,14 @@ pub struct MergeMiningProxyConfig {
     pub listener_address: Multiaddr,
     /// In sole merged mining, the block solution is usually submitted to the Monero blockchain (monerod) as well as to
     /// the Minotari blockchain, then this setting should be "true". With pool merged mining, there is no sense in
-    /// submitting the solution to the Monero blockchain as thepool does that, then this setting should be "false".
+    /// submitting the solution to the Monero blockchain as the pool does that, then this setting should be "false".
     pub submit_to_origin: bool,
     /// The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables
     /// mining, or not. If merge mining starts before the base node has achieved initial sync, those Minotari mined
     /// blocks will not be accepted.
     pub wait_for_initial_sync_at_startup: bool,
     /// When mining for minotari, you might want to check the achieved difficulty of the mined minotari block before
-    /// submitting. This setting this can be disabled to allow you to always submit minotari blocks even if the
+    /// submitting. This setting an be disabled to allow you to always submit minotari blocks even if the
     /// difficulty does not meet the required.
     pub check_tari_difficulty_before_submit: bool,
     /// The maximum amount of VMs that RandomX will be use

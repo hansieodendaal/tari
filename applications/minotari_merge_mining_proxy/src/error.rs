@@ -96,6 +96,8 @@ pub enum MmProxyError {
     ServersUnavailable,
     #[error("Invalid difficulty: {0}")]
     DifficultyError(#[from] DifficultyError),
+    #[error("Read/write lock error : {0}")]
+    PoisonedLock(String),
 }
 
 impl From<tonic::Status> for MmProxyError {

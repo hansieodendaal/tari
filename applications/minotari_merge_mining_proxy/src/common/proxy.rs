@@ -67,7 +67,7 @@ pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<
 }
 
 /// Convert parts and content into body response.
-pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Response<Body> {
+pub fn into_http_response(mut parts: response::Parts, content: &json::Value) -> Response<Body> {
     let resp = json::to_string(content).expect("json::to_string cannot fail when stringifying a json::Value");
     // Ensure that the content length header is correct
     parts.headers.insert(header::CONTENT_LENGTH, resp.len().into());
@@ -78,9 +78,9 @@ pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Respo
 }
 
 /// Convert json response to body response.
-pub fn into_body_from_response(resp: Response<json::Value>) -> Response<Body> {
+pub fn into_http_response_from_json(resp: Response<json::Value>) -> Response<Body> {
     let (parts, body) = resp.into_parts();
-    into_response(parts, &body)
+    into_http_response(parts, &body)
 }
 
 /// Reads the body until there is no more to read.
@@ -129,7 +129,7 @@ pub mod test {
     pub fn test_into_body_from_response() {
         let body = json::json!({"test key": "test value"});
         let resp = Response::new(body.clone());
-        let response = into_body_from_response(resp);
+        let response = into_http_response_from_json(resp);
         assert!(response.headers().contains_key("content-type"));
         assert_eq!(response.headers()["content-type"], "application/json");
         assert!(response.headers().contains_key("content-length"));

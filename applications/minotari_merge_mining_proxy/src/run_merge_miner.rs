@@ -43,7 +43,7 @@ use crate::{
     proxy::MergeMiningProxyService,
     Cli,
 };
-const LOG_TARGET: &str = "minotari_mm_proxy::proxy";
+const LOG_TARGET: &str = "mm_proxy::run_merge_miner";
 
 pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let config_path = cli.common.config_path();
@@ -52,7 +52,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     setup_grpc_config(&mut config);
 
     info!(target: LOG_TARGET, "Configuration: {:?}", config);
-    let client = reqwest::Client::builder()
+    let xmrig_http_client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(25)
@@ -82,7 +82,7 @@ pub async fn start_merge_miner(cli: Cli) -> Result<(), anyhow::Error> {
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let randomx_service = MergeMiningProxyService::new(
         config,
-        client,
+        xmrig_http_client,
         base_node_client,
         wallet_client,
         BlockTemplateRepository::new(),

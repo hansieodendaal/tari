@@ -34,7 +34,7 @@ use tracing::trace;
 
 use crate::error::MmProxyError;
 
-const LOG_TARGET: &str = "minotari_mm_proxy::xmrig";
+const LOG_TARGET: &str = "mm_proxy::block_template_data";
 
 /// Structure for holding hashmap of hashes -> [BlockTemplateRepositoryItem]
 #[derive(Debug, Clone)]
