@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashSet, convert::TryInto};
+use std::{collections::HashSet, convert::TryInto, time::Instant};
 
 use log::{trace, warn};
 use tari_common_types::types::{Commitment, CommitmentFactory, HashOutput, PrivateKey, PublicKey, RangeProofService};
@@ -146,6 +146,7 @@ impl AggregateBodyInternalConsistencyValidator {
 /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
 /// will be added to the public key used in the signature verification.
 fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError> {
+    let timer = Instant::now();
     trace!(target: LOG_TARGET, "Checking kernel signatures",);
     for kernel in body.kernels() {
         kernel.verify_signature().map_err(|e| {
@@ -153,6 +154,11 @@ fn verify_kernel_signatures(body: &AggregateBody) -> Result<(), ValidationError>
             e
         })?;
     }
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 1.3.1 verify_kernel_signatures in {:.2?}",
+        timer.elapsed(),
+    );
     Ok(())
 }
 
@@ -194,6 +200,7 @@ fn validate_kernel_sum(
     offset_and_reward: Commitment,
     factory: &CommitmentFactory,
 ) -> Result<(), ValidationError> {
+    let timer = Instant::now();
     trace!(target: LOG_TARGET, "Checking kernel total");
     let KernelSum { sum: excess, fees } = sum_kernels(body, offset_and_reward)?;
     let sum_io = sum_commitments(body)?;
@@ -210,6 +217,11 @@ fn validate_kernel_sum(
         return Err(ValidationError::InvalidAccountingBalance);
     }
 
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 1.3.3 validate_kernel_sum in {:.2?}",
+        timer.elapsed(),
+    );
     Ok(())
 }
 /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
@@ -246,17 +258,29 @@ fn validate_range_proofs(
     body: &AggregateBody,
     range_proof_service: &RangeProofService,
 ) -> Result<(), TransactionError> {
+    let timer = Instant::now();
     trace!(target: LOG_TARGET, "Checking range proofs");
     let outputs = body.outputs().iter().collect::<Vec<_>>();
     batch_verify_range_proofs(range_proof_service, &outputs)?;
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 1.3.4 validate_range_proofs in {:.2?}",
+        timer.elapsed(),
+    );
     Ok(())
 }
 
 fn verify_metadata_signatures(body: &AggregateBody) -> Result<(), ValidationError> {
+    let timer = Instant::now();
     trace!(target: LOG_TARGET, "Checking sender signatures");
     for o in body.outputs() {
         o.verify_metadata_signature()?;
     }
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 1.3.5 verify_metadata_signatures in {:.2?}",
+        timer.elapsed(),
+    );
     Ok(())
 }
 
@@ -268,6 +292,7 @@ fn validate_script_and_script_offset(
     prev_header: Option<HashOutput>,
     height: u64,
 ) -> Result<(), ValidationError> {
+    let timer = Instant::now();
     trace!(target: LOG_TARGET, "Checking script and script offset");
     // lets count up the input script public keys
     let mut input_keys = PublicKey::default();
@@ -289,6 +314,11 @@ fn validate_script_and_script_offset(
     if lhs != script_offset {
         return Err(ValidationError::TransactionError(TransactionError::ScriptOffset));
     }
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 1.3.6 validate_script_and_script_offset in {:.2?}",
+        timer.elapsed(),
+    );
     Ok(())
 }
 
@@ -304,6 +334,7 @@ fn check_weight(
     height: u64,
     consensus_constants: &ConsensusConstants,
 ) -> Result<(), ValidationError> {
+    let timer = Instant::now();
     let block_weight = body
         .calculate_weight(consensus_constants.transaction_weight_params())
         .map_err(|e| ValidationError::SerializationError(format!("Unable to calculate body weight: {}", e)))?;
@@ -317,6 +348,11 @@ fn check_weight(
             block_weight,
         );
 
+        trace!(
+            target: LOG_TARGET,
+            "[block sync timings] 1.3.2 check_weight in {:.2?}",
+            timer.elapsed(),
+        );
         Ok(())
     } else {
         Err(ValidationError::BlockTooLarge {

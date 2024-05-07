@@ -22,6 +22,7 @@
 use std::{
     cmp::max,
     fmt::{Display, Error, Formatter},
+    time::Instant,
 };
 
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -209,6 +210,7 @@ impl AggregateBody {
     /// Verify the signatures in all kernels contained in this aggregate body. Clients must provide an offset that
     /// will be added to the public key used in the signature verification.
     pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
+        let timer = Instant::now();
         trace!(target: LOG_TARGET, "Checking kernel signatures",);
         for kernel in &self.kernels {
             kernel.verify_signature().map_err(|e| {
@@ -216,6 +218,11 @@ impl AggregateBody {
                 e
             })?;
         }
+        trace!(
+            target: LOG_TARGET,
+            "[block sync timings] 1.3.1 verify_kernel_signatures in {:.2?}",
+            timer.elapsed(),
+        );
         Ok(())
     }
 

@@ -2049,12 +2049,16 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
     consensus: &ConsensusManager,
     smt: Arc<RwLock<OutputSmt>>,
 ) -> Result<BlockAddResult, ChainStorageError> {
+    let timer = Instant::now();
     let metadata = db.fetch_chain_metadata()?;
+    let fetch_metadata_time_01 = timer.elapsed();
     // lets clear out all remaining headers that dont have a matching block
     // rewind to height will first delete the headers, then try delete from blocks, if we call this to the current
     // height it will only trim the extra headers with no blocks
     rewind_to_height(db, metadata.best_block_height(), smt.clone())?;
+    let rewind_to_height_time_02 = timer.elapsed();
     let strongest_orphan_tips = db.fetch_strongest_orphan_chain_tips()?;
+    let fetch_orphan_tips_time_03 = timer.elapsed();
     if strongest_orphan_tips.is_empty() {
         // we have no orphan chain tips, we have trimmed remaining headers, we are on the best tip we have, so lets
         // return ok
@@ -2071,6 +2075,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
             );
             ChainStorageError::InvalidOperation("No chain tips found in orphan pool".to_string())
         })?;
+    let best_fork_header_time_04 = timer.elapsed();
     let tip_header = db.fetch_tip_header()?;
     match chain_strength_comparer.compare(&best_fork_header, &tip_header) {
         Ordering::Greater => {
@@ -2095,6 +2100,7 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
             return Ok(BlockAddResult::OrphanBlock);
         },
     }
+    let chain_strength_comparer_time_05 = timer.elapsed();
 
     let reorg_chain = get_orphan_link_main_chain(db, best_fork_header.hash())?;
     let fork_hash = reorg_chain
@@ -2102,10 +2108,55 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
         .expect("The new orphan block should be in the queue")
         .header()
         .prev_hash;
+    let get_orphan_link_time_06 = timer.elapsed();
 
     let num_added_blocks = reorg_chain.len();
     let removed_blocks = reorganize_chain(db, block_validator, fork_hash, &reorg_chain, consensus, smt)?;
     let num_removed_blocks = removed_blocks.len();
+    let reorganize_chain_time_07 = timer.elapsed();
+
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 5.1 #{} swap_to_highest fetch metadata: {:.2?}",
+        metadata.best_block_height(),
+        fetch_metadata_time_01,
+    );
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 5.2 #{} rewind to height: {:.2?}",
+        metadata.best_block_height(),
+        rewind_to_height_time_02 - fetch_metadata_time_01,
+    );
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 5.3 #{} fetch orphan tips: {:.2?}",
+        metadata.best_block_height(),
+        fetch_orphan_tips_time_03 - rewind_to_height_time_02,
+    );
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 5.4 #{} best fork header: {:.2?}",
+        metadata.best_block_height(),
+        best_fork_header_time_04 - fetch_orphan_tips_time_03,
+    );
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 5.5 #{} chain strength compare: {:.2?}",
+        metadata.best_block_height(),
+        chain_strength_comparer_time_05 - best_fork_header_time_04,
+    );
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 5.6 #{} get orphan link: {:.2?}",
+        metadata.best_block_height(),
+        get_orphan_link_time_06 - chain_strength_comparer_time_05,
+    );
+    trace!(
+        target: LOG_TARGET,
+        "[block sync timings] 5.7 #{} reorganize chain: {:.2?}",
+        metadata.best_block_height(),
+        reorganize_chain_time_07 - get_orphan_link_time_06,
+    );
 
     // reorg is required when any blocks are removed or more than one are added
     // see https://github.com/tari-project/tari/issues/2101
@@ -2117,6 +2168,14 @@ fn swap_to_highest_pow_chain<T: BlockchainBackend>(
                 error!(target: LOG_TARGET, "Failed to track reorg: {}", e);
             }
         }
+        let track_reorgs_time_08 = timer.elapsed();
+
+        trace!(
+            target: LOG_TARGET,
+            "[block sync timings] 5.8 #{} track reorgs: {:.2?}",
+            metadata.best_block_height(),
+            track_reorgs_time_08 - reorganize_chain_time_07,
+        );
 
         log!(
             target: LOG_TARGET,

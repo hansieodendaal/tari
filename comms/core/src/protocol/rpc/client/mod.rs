@@ -441,6 +441,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     }
 
     async fn run(mut self) {
+        let timer = Instant::now();
         debug!(
             target: LOG_TARGET,
             "(stream={}) Performing client handshake for '{}'",
@@ -454,7 +455,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 let latency = start.elapsed();
                 debug!(
                     target: LOG_TARGET,
-                    "(stream={}) RPC Session ({}) negotiation completed. Latency: {:.0?}",
+                    "(stream={}) RPC Session ({}) negotiation completed. Latency: {:.2?}",
                     self.stream_id(),
                     self.protocol_name(),
                     latency
@@ -476,9 +477,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                 return;
             },
         }
+        trace!(
+            target: LOG_TARGET,
+            "[block sync timings] 3.1 rpc client prepare in {:.2?}",
+            timer.elapsed()
+        );
 
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.node_id, &self.protocol_id).inc();
+        let mut latency_timer = Instant::now();
         loop {
             tokio::select! {
                 // Check the futures in the order they are listed
@@ -487,14 +494,25 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     break;
                 }
                 req = self.request_rx.recv() => {
+                    trace!(
+                        target: LOG_TARGET,
+                        "[block sync timings] 3.2 rpc client tokio::select latency {:.2?}",
+                        latency_timer.elapsed()
+                    );
                     match req {
                         Some(req) => {
+                            let timer = Instant::now();
                             if let Err(err) = self.handle_request(req).await {
                                 #[cfg(feature = "metrics")]
                                 metrics::client_errors(&self.node_id, &self.protocol_id).inc();
                                 error!(target: LOG_TARGET, "(stream={}) Unexpected error: {}. Worker is terminating.", self.stream_id(), err);
                                 break;
                             }
+                             trace!(
+                                target: LOG_TARGET,
+                                "[block sync timings] 3.6 rpc client handle_request in {:.2?}",
+                                timer.elapsed()
+                            );
                         }
                         None => {
                             debug!(target: LOG_TARGET, "(stream={}) Request channel closed. Worker is terminating.", self.stream_id());
@@ -503,6 +521,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     }
                 }
             }
+            latency_timer = Instant::now();
         }
         #[cfg(feature = "metrics")]
         metrics::num_sessions(&self.node_id, &self.protocol_id).dec();
@@ -612,6 +631,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     ) -> Result<(), RpcError> {
+        let mut timer = Instant::now();
         #[cfg(feature = "metrics")]
         metrics::outbound_request_bytes(&self.node_id, &self.protocol_id).observe(request.get_ref().len() as f64);
 
@@ -651,7 +671,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         #[cfg(feature = "metrics")]
         let mut metrics_timer = Some(latency.start_timer());
 
-        let timer = Instant::now();
         if let Err(err) = self.send_request(req).await {
             warn!(target: LOG_TARGET, "{}", err);
             #[cfg(feature = "metrics")]
@@ -660,8 +679,14 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
             return Ok(());
         }
         let partial_latency = timer.elapsed();
+        trace!(
+            target: LOG_TARGET,
+            "[block sync timings] 3.3 do_request_response prepare in {:.2?}",
+            timer.elapsed()
+        );
 
         loop {
+            timer = Instant::now();
             if self.shutdown_signal.is_triggered() {
                 debug!(
                     target: LOG_TARGET,
@@ -699,6 +724,13 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     if let Some(t) = time_to_first_msg {
                         let _ = self.last_request_latency_tx.send(Some(partial_latency + t));
                     }
+                    trace!(
+                        target: LOG_TARGET,
+                        "[block sync timings] 3.4 do_request_response receive {} bytes with latency {:.2?}",
+                        resp.payload.len(),
+                        timer.elapsed()
+                    );
+                    timer = Instant::now();
                     trace!(
                         target: LOG_TARGET,
                         "Received response ({} byte(s)) from request #{} (protocol = {}, method={})",
@@ -752,6 +784,11 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                     } else {
                         let _result = response_tx.send(Ok(resp)).await;
                     }
+                    trace!(
+                        target: LOG_TARGET,
+                        "[block sync timings] 3.5 do_request_response convert to result in {:.2?}",
+                        timer.elapsed()
+                    );
                     if is_finished {
                         break;
                     }

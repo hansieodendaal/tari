@@ -419,6 +419,7 @@ impl LMDBDatabase {
                     expected_prev_best_block,
                     timestamp,
                 } => {
+                    let timer = Instant::now();
                     // for security we check that the best block does exist, and we check the previous value
                     // we dont want to check this if the prev block has never been set, this means a empty hash of 32
                     // bytes.
@@ -456,6 +457,12 @@ impl LMDBDatabase {
                         MetadataKey::BestBlockTimestamp,
                         &MetadataValue::BestBlockTimestamp(*timestamp),
                     )?;
+                    trace!(
+                        target: LOG_TARGET,
+                        "[block sync timings] #{} Set best block height in {:.2?}",
+                        height,
+                        timer.elapsed(),
+                    );
                 },
                 SetPruningHorizonConfig(pruning_horizon) => {
                     self.set_metadata(
@@ -1085,6 +1092,7 @@ impl LMDBDatabase {
     }
 
     fn delete_orphan(&self, txn: &WriteTransaction<'_>, hash: &HashOutput) -> Result<(), ChainStorageError> {
+        let timer = Instant::now();
         let orphan = match lmdb_get::<_, Block>(txn, &self.orphans_db, hash.as_slice())? {
             Some(orphan) => orphan,
             None => {
@@ -1161,6 +1169,12 @@ impl LMDBDatabase {
             )?;
         }
         lmdb_delete(txn, &self.orphans_db, hash.as_slice(), "orphans_db")?;
+        trace!(
+            target: LOG_TARGET,
+            "[block sync timings] #{} Deleted orphan block in {:.2?}",
+            orphan.header.height,
+            timer.elapsed(),
+        );
         Ok(())
     }
 
@@ -1173,6 +1187,7 @@ impl LMDBDatabase {
         body: AggregateBody,
         smt: Arc<RwLock<OutputSmt>>,
     ) -> Result<(), ChainStorageError> {
+        let timer = Instant::now();
         let mut output_smt = smt.write().map_err(|e| {
             error!(
                 target: LOG_TARGET,
@@ -1341,6 +1356,12 @@ impl LMDBDatabase {
             &BlockAccumulatedData::new(kernel_mmr.get_pruned_hash_set()?, total_kernel_sum),
         )?;
 
+        trace!(
+            target: LOG_TARGET,
+            "[block sync timings] #{} Insert tip block body in {:.2?}",
+            header.height,
+            timer.elapsed(),
+        );
         Ok(())
     }
 
@@ -1769,7 +1790,7 @@ impl BlockchainBackend for LMDBDatabase {
                 Ok(_) => {
                     trace!(
                         target: LOG_TARGET,
-                        "Database completed {} operation(s) in {:.0?}",
+                        "Database completed {} operation(s) in {:.2?}",
                         num_operations,
                         mark.elapsed()
                     );

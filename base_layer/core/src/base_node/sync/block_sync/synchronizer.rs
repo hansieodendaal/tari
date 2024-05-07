@@ -268,6 +268,8 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
         let mut last_sync_timer = Instant::now();
         let mut avg_latency = RollingAverageTime::new(20);
         while let Some(block_result) = block_stream.next().await {
+            let timer = Instant::now();
+            let total_timer = Instant::now();
             let latency = last_sync_timer.elapsed();
             avg_latency.add_sample(latency);
             let block_body_response = block_result?;
@@ -310,6 +312,18 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 body.to_counts_string(),
                 latency
             );
+            trace!(
+                target: LOG_TARGET,
+                "[block sync timings] 1.1 #{} Latency in {:.2?}",
+                current_height,
+                latency,
+            );
+            trace!(
+                target: LOG_TARGET,
+                "[block sync timings] 1.2 #{} Initial in {:.2?}",
+                current_height,
+                timer.elapsed(),
+            );
 
             let timer = Instant::now();
             let (header, header_accum_data) = header.into_parts();
@@ -351,10 +365,11 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 .map(Arc::new)
                 .ok_or(BlockSyncError::FailedToConstructChainBlock)?;
 
+            let validation_time = timer.elapsed();
             debug!(
                 target: LOG_TARGET,
                 "Validated in {:.0?}. Storing block body #{} (PoW = {}, {})",
-                timer.elapsed(),
+                validation_time,
                 block.header().height,
                 block.header().pow_algo(),
                 block.block().body.to_counts_string(),
@@ -362,6 +377,12 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             trace!(
                 target: LOG_TARGET,
                 "{}",block
+            );
+            trace!(
+                target: LOG_TARGET,
+                "[block sync timings] 1.3 #{} Validation in {:.2?}",
+                current_height,
+                validation_time,
             );
 
             let timer = Instant::now();
@@ -378,6 +399,26 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                 )
                 .commit()
                 .await?;
+            let db_write_time = timer.elapsed();
+            debug!(
+                target: LOG_TARGET,
+                "Block body #{} added in {:.2?}, Tot_acc_diff {}, Monero {}, SHA3 {}, latency: {:.2?}",
+                block.height(),
+                db_write_time,
+                block
+                    .accumulated_data()
+                    .total_accumulated_difficulty,
+                block.accumulated_data().accumulated_randomx_difficulty,
+                block.accumulated_data().accumulated_sha3x_difficulty,
+                latency
+            );
+            trace!(
+                target: LOG_TARGET,
+                "[block sync timings] 1.4 #{} Db write in {:.2?}",
+                current_height,
+                db_write_time,
+            );
+            let timer = Instant::now();
 
             // Average time between receiving blocks from the peer - used to detect a slow sync peer
             let last_avg_latency = avg_latency.calculate_average_with_min_samples(5);
@@ -389,18 +430,6 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
             self.hooks
                 .call_on_progress_block_hooks(block.clone(), tip_height, &sync_peer);
 
-            debug!(
-                target: LOG_TARGET,
-                "Block body #{} added in {:.0?}, Tot_acc_diff {}, Monero {}, SHA3 {}, latency: {:.2?}",
-                block.height(),
-                timer.elapsed(),
-                block
-                    .accumulated_data()
-                    .total_accumulated_difficulty,
-                block.accumulated_data().accumulated_randomx_difficulty,
-                block.accumulated_data().accumulated_sha3x_difficulty,
-                latency
-            );
             if let Some(avg_latency) = last_avg_latency {
                 if avg_latency > max_latency {
                     return Err(BlockSyncError::MaxLatencyExceeded {
@@ -410,6 +439,18 @@ impl<'a, B: BlockchainBackend + 'static> BlockSynchronizer<'a, B> {
                     });
                 }
             }
+            trace!(
+                target: LOG_TARGET,
+                "[block sync timings] 1.5 #{} After write in {:.2?}",
+                current_height,
+                timer.elapsed(),
+            );
+            trace!(
+                target: LOG_TARGET,
+                "[block sync timings] 1.6 #{} Total time in {:.2?}",
+                current_height,
+                total_timer.elapsed(),
+            );
 
             current_block = Some(block);
             last_sync_timer = Instant::now();

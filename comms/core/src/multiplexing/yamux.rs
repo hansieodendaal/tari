@@ -23,6 +23,7 @@
 use std::{future::poll_fn, io, marker::PhantomData, pin::Pin, task::Poll};
 
 use futures::{channel::oneshot, task::Context, Stream};
+use log::trace;
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     sync::mpsc,
@@ -347,7 +348,9 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + Sync + 
     async fn next_inbound_stream(
         connection_mut: &mut yamux::Connection<TSocket>,
     ) -> Option<yamux::Result<yamux::Stream>> {
-        poll_fn(|cx| connection_mut.poll_next_inbound(cx)).await
+        let result = poll_fn(|cx| connection_mut.poll_next_inbound(cx)).await;
+        trace!(target: LOG_TARGET, "Yamux connection polled");
+        result
     }
 
     async fn close(connection: &mut yamux::Connection<TSocket>) -> yamux::Result<()> {

@@ -549,13 +549,18 @@ where
     }
 
     async fn run(&mut self) -> Result<(), RpcServerError> {
+        let mut latency_timer = Instant::now();
         while let Some(result) = self.framed.next().await {
+            trace!(
+                target: LOG_TARGET,
+                "[block sync timings] 4.1 latency {:.2?}",
+                latency_timer.elapsed()
+            );
             match result {
                 Ok(frame) => {
+                    let start = Instant::now();
                     #[cfg(feature = "metrics")]
                     metrics::inbound_requests_bytes(&self.node_id, &self.protocol).observe(frame.len() as f64);
-
-                    let start = Instant::now();
 
                     if let Err(err) = self.handle_request(frame.freeze()).await {
                         if let Err(err) = self.framed.close().await {
@@ -588,6 +593,11 @@ where
                         elapsed,
                         if elapsed.as_secs() > 5 { " (LONG REQUEST)" } else { "" }
                     );
+                    trace!(
+                        target: LOG_TARGET,
+                        "[block sync timings] 4.8 request completed in {:.2?}",
+                        elapsed
+                    );
                 },
                 Err(err) => {
                     if let Err(err) = self.framed.close().await {
@@ -599,6 +609,7 @@ where
                     return Err(err.into());
                 },
             }
+            latency_timer = Instant::now();
         }
 
         self.framed.close().await?;
@@ -607,6 +618,7 @@ where
 
     #[instrument(name = "rpc::server::handle_req", level="trace", skip(self, request), err, fields(request_size = request.len ()))]
     async fn handle_request(&mut self, mut request: Bytes) -> Result<(), RpcServerError> {
+        let timer = Instant::now();
         let decoded_msg = proto::rpc::RpcRequest::decode(&mut request)?;
 
         let request_id = decoded_msg.request_id;
@@ -707,7 +719,18 @@ where
 
         match service_result {
             Ok(body) => {
+                trace!(
+                    target: LOG_TARGET,
+                    "[block sync timings] 4.2 handle_request prepare in {:.2?}",
+                    timer.elapsed()
+                );
+                let timer = Instant::now();
                 self.process_body(request_id, deadline, body).await?;
+                trace!(
+                    target: LOG_TARGET,
+                    "[block sync timings] 4.7 handle_request processed in {:.2?}",
+                    timer.elapsed()
+                );
             },
             Err(err) => {
                 debug!(
@@ -740,6 +763,7 @@ where
         deadline: Duration,
         body: Response<Body>,
     ) -> Result<(), RpcServerError> {
+        let timer = Instant::now();
         trace!(target: LOG_TARGET, "Service call succeeded");
 
         #[cfg(feature = "metrics")]
@@ -760,14 +784,25 @@ where
                 message.to_proto()
             })
             .map(|resp| Bytes::from(resp.to_encoded_bytes()));
-
+        trace!(
+            target: LOG_TARGET,
+            "[block sync timings] 4.3 process_body initial stuff in {:.2?}",
+            timer.elapsed()
+        );
         loop {
+            let timer = Instant::now();
             let next_item = log_timing(
                 self.logging_context_string.clone(),
                 request_id,
                 "message read",
                 stream.next(),
             );
+            trace!(
+                target: LOG_TARGET,
+                "[block sync timings] 4.4 process_body message read in {:.2?}",
+                timer.elapsed()
+            );
+            let timer = Instant::now();
             let timeout = time::sleep(deadline);
 
             tokio::select! {
@@ -796,7 +831,20 @@ where
                                 msg.len()
                             );
 
+                            trace!(
+                                target: LOG_TARGET,
+                                "[block sync timings] 4.5 process_body prepare in {:.2?}",
+                                timer.elapsed()
+                            );
+                            let timer = Instant::now();
+
                             self.framed.send(msg).await?;
+
+                            trace!(
+                                target: LOG_TARGET,
+                                "[block sync timings] 4.6 process_body message sent in {:.2?}",
+                                timer.elapsed()
+                            );
                         },
                         None => {
                             debug!(target: LOG_TARGET, "{} Request complete", self.logging_context_string,);

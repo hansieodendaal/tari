@@ -24,6 +24,7 @@ use std::{
     cmp,
     convert::{TryFrom, TryInto},
     sync::{Arc, Weak},
+    time::Instant,
 };
 
 use log::*;
@@ -184,6 +185,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 // Move token into this task
                 let peer_node_id = session_token;
                 for (start, end) in iter {
+                    let timer = Instant::now();
                     if tx.is_closed() {
                         break;
                     }
@@ -231,6 +233,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         break;
                     }
 
+                    let num_intputs = blocks.as_ref().map(|blocks| blocks.iter().map(|b| b.block().body.inputs().len()).sum::<usize>()).unwrap_or_default();
+                    let num_outputs = blocks.as_ref().map(|blocks| blocks.iter().map(|b| b.block().body.outputs().len()).sum::<usize>()).unwrap_or_default();
+                    let num_kernels = blocks.as_ref().map(|blocks| blocks.iter().map(|b| b.block().body.kernels().len()).sum::<usize>()).unwrap_or_default();
+
                     match blocks {
                         Ok(blocks) if blocks.is_empty() => {
                             break;
@@ -244,6 +250,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                                 })
                             });
 
+                            trace!(
+                                target: LOG_TARGET,
+                                "[block sync timings] 2.1 #{} - #{}, inputs: {}, outputs: {}, kernels: {}, Fetch blocks in {:.2?}",
+                                start,
+                                end,
+                                num_intputs,
+                                num_outputs,
+                                num_kernels,
+                                timer.elapsed()
+                            );
+                            let timer = Instant::now();
+
                             // Ensure task stops if the peer prematurely stops their RPC session
                             if utils::mpsc::send_all(&tx, blocks).await.is_err() {
                                 debug!(
@@ -252,6 +270,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                                 );
                                 break;
                             }
+
+                            trace!(
+                                target: LOG_TARGET,
+                                "[block sync timings] 2.2 #{} - #{}, inputs: {}, outputs: {}, kernels: {}, Send blocks in {:.2?}",
+                                start,
+                                end,
+                                num_intputs,
+                                num_outputs,
+                                num_kernels,
+                                timer.elapsed()
+                            );
                         },
                         Err(err) => {
                             let _result = tx.send(Err(err)).await;
