@@ -23,7 +23,9 @@ pub struct ScriptOffsetCtx {
     total_script_private_key: Zeroizing<RistrettoSecretKey>,
     account: u64,
     total_offset_indexes: u64,
-    total_commitment_keys: u64,
+    total_script_indexes: u64,
+    total_derived_offset_keys: u64,
+    total_derived_script_keys: u64,
     unique_keys: Vec<Zeroizing<RistrettoSecretKey>>,
 }
 
@@ -35,7 +37,9 @@ impl ScriptOffsetCtx {
             total_script_private_key: Zeroizing::new(RistrettoSecretKey::default()),
             account: 0,
             total_offset_indexes: 0,
-            total_commitment_keys: 0,
+            total_script_indexes: 0,
+            total_derived_offset_keys: 0,
+            total_derived_script_keys: 0,
             unique_keys: Vec::new(),
         }
     }
@@ -46,7 +50,9 @@ impl ScriptOffsetCtx {
         self.total_script_private_key = Zeroizing::new(RistrettoSecretKey::default());
         self.account = 0;
         self.total_offset_indexes = 0;
-        self.total_commitment_keys = 0;
+        self.total_script_indexes = 0;
+        self.total_derived_offset_keys = 0;
+        self.total_derived_script_keys = 0;
         self.unique_keys = Vec::new();
     }
 
@@ -71,11 +77,27 @@ fn read_instructions(offset_ctx: &mut ScriptOffsetCtx, data: &[u8]) {
     }
 
     if data.len() < 24 {
-        offset_ctx.total_commitment_keys = 0;
+        offset_ctx.total_script_indexes = 0;
     } else {
-        let mut total_commitment_keys = [0u8; 8];
-        total_commitment_keys.clone_from_slice(&data[16..24]);
-        offset_ctx.total_commitment_keys = u64::from_le_bytes(total_commitment_keys);
+        let mut total_script_indexes = [0u8; 8];
+        total_script_indexes.clone_from_slice(&data[16..24]);
+        offset_ctx.total_script_indexes = u64::from_le_bytes(total_script_indexes);
+    }
+
+    if data.len() < 32 {
+        offset_ctx.total_derived_offset_keys = 0;
+    } else {
+        let mut total_derived_offset_keys = [0u8; 8];
+        total_derived_offset_keys.clone_from_slice(&data[24..32]);
+        offset_ctx.total_derived_offset_keys = u64::from_le_bytes(total_derived_offset_keys);
+    }
+
+    if data.len() < 40 {
+        offset_ctx.total_derived_script_keys = 0;
+    } else {
+        let mut total_derived_script_keys = [0u8; 8];
+        total_derived_script_keys.clone_from_slice(&data[32..40]);
+        offset_ctx.total_derived_script_keys = u64::from_le_bytes(total_derived_script_keys);
     }
 }
 
@@ -105,6 +127,7 @@ pub fn handler_get_script_offset(
     let payload_offset = 2;
     let end_offset_indexes = payload_offset + offset_ctx.total_offset_indexes;
 
+    // Indexed Sender offset
     if (payload_offset..end_offset_indexes).contains(&(chunk as u64)) {
         let mut index_bytes = [0u8; 8];
         index_bytes.clone_from_slice(&data[0..8]);
@@ -116,9 +139,36 @@ pub fn handler_get_script_offset(
             Zeroizing::new(offset_ctx.total_sender_offset_private_key.deref() + offset.deref());
     }
 
-    let end_commitment_keys = end_offset_indexes + offset_ctx.total_commitment_keys;
+    // Indexed Script key
+    let end_script_indexes = end_offset_indexes + offset_ctx.total_script_indexes;
+    if (end_offset_indexes..end_script_indexes).contains(&(chunk as u64)) {
+        let mut index_bytes = [0u8; 8];
+        index_bytes.clone_from_slice(&data[0..8]);
+        let index = u64::from_le_bytes(index_bytes);
 
-    if (end_offset_indexes..end_commitment_keys).contains(&(chunk as u64)) {
+        let script_key = derive_from_bip32_key(offset_ctx.account, index, KeyType::OneSidedSenderOffset)?;
+        offset_ctx.add_unique_key(script_key.clone());
+        offset_ctx.total_script_private_key =
+            Zeroizing::new(offset_ctx.total_script_private_key.deref() + script_key.deref());
+    }
+
+    // Derived sender offsets key
+    let end_derived_offset_keys = end_script_indexes + offset_ctx.total_derived_offset_keys;
+    if (end_script_indexes..end_derived_offset_keys).contains(&(chunk as u64)) {
+        let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_SPEND_INDEX, KeyType::Spend)?;
+        let blinding_factor: Zeroizing<RistrettoSecretKey> =
+            get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
+
+        let k = alpha_hasher(alpha, blinding_factor)?;
+
+        offset_ctx.add_unique_key(k.clone());
+        offset_ctx.total_sender_offset_private_key =
+            Zeroizing::new(offset_ctx.total_sender_offset_private_key.deref() + k.deref());
+    }
+
+    // Derived script key
+    let end_derived_script_keys = end_derived_offset_keys + offset_ctx.total_derived_script_keys;
+    if (end_derived_offset_keys..end_derived_script_keys).contains(&(chunk as u64)) {
         let alpha = derive_from_bip32_key(offset_ctx.account, STATIC_SPEND_INDEX, KeyType::Spend)?;
         let blinding_factor: Zeroizing<RistrettoSecretKey> =
             get_key_from_canonical_bytes::<RistrettoSecretKey>(&data[0..32])?.into();
