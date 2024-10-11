@@ -33,6 +33,7 @@ use std::{
 use futures::{future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use multiaddr::Multiaddr;
+use tari_shutdown::oneshot_trigger::OneshotTrigger;
 use tokio::{
     sync::{mpsc, oneshot},
     time,
@@ -137,6 +138,8 @@ pub struct PeerConnection {
     started_at: Instant,
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
+    drop_notifier: OneshotTrigger<NodeId>,
+    number_of_rpc_clients: Option<usize>,
 }
 
 impl PeerConnection {
@@ -159,6 +162,8 @@ impl PeerConnection {
             started_at: Instant::now(),
             substream_counter,
             handle_counter: Arc::new(()),
+            drop_notifier: OneshotTrigger::<NodeId>::new(),
+            number_of_rpc_clients: None,
         }
     }
 
@@ -254,11 +259,16 @@ impl PeerConnection {
             self.peer_node_id
         );
         let framed = self.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await?;
-        builder
+
+        let rpc_client = builder
             .with_protocol_id(protocol)
             .with_node_id(self.peer_node_id.clone())
+            .with_drop_receiver(self.drop_notifier.clone())
             .connect(framed)
-            .await
+            .await?;
+        self.number_of_rpc_clients = Some(self.number_of_rpc_clients.unwrap_or(0) + 1);
+
+        Ok(rpc_client)
     }
 
     /// Creates a new RpcClientPool that can be shared between tasks. The client pool will lazily establish up to
@@ -295,6 +305,24 @@ impl PeerConnection {
         reply_rx
             .await
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
+    }
+}
+
+impl Drop for PeerConnection {
+    fn drop(&mut self) {
+        trace!(
+            target: LOG_TARGET,
+            "PeerConnection `{}` drop called, still has {} sub-streams and {} handles open",
+            self.peer_node_id, self.substream_count(), self.handle_count(),
+        );
+        if let Some(number_of_rpc_clients) = self.number_of_rpc_clients {
+            self.drop_notifier.broadcast(self.peer_node_id.clone());
+            trace!(
+                target: LOG_TARGET,
+                "PeerConnection `{}` on drop notified {} RPC clients to drop connection",
+                self.peer_node_id.clone(), number_of_rpc_clients,
+            );
+        }
     }
 }
 
