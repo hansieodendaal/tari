@@ -315,7 +315,7 @@ where
         Ok(())
     }
 
-    async fn handle_request(&self, req: RpcServerRequest) {
+    async fn handle_request(&mut self, req: RpcServerRequest) {
         #[allow(clippy::enum_glob_use)]
         use RpcServerRequest::*;
         match req {
@@ -330,6 +330,10 @@ where
             GetNumActiveSessionsForPeer(node_id, reply) => {
                 let num_active = self.sessions.get(&node_id).copied().unwrap_or(0);
                 let _ = reply.send(num_active);
+            },
+            CloseAllSessionsForPeer(node_id, reply) => {
+                let num_closed = self.close_all_sessions(&node_id);
+                let _ = reply.send(num_closed);
             },
         }
     }
@@ -385,6 +389,23 @@ where
 
         *count += 1;
         Ok(*count)
+    }
+
+    fn close_all_sessions(&mut self, node_id: &NodeId) -> usize {
+        let mut count = 0;
+        loop {
+            if let Some(v) = self.sessions.get_mut(node_id) {
+                count += 1;
+                info!(target: LOG_TARGET, "Closing session {} for peer `{}`", count, node_id);
+                *v -= 1;
+                if *v == 0 {
+                    self.sessions.remove(node_id);
+                    info!(target: LOG_TARGET, "Closed all sessions for peer `{}`", node_id);
+                    break;
+                }
+            }
+        }
+        count
     }
 
     fn on_session_complete(&mut self, node_id: &NodeId) {
