@@ -120,7 +120,8 @@ impl WalletConnectivityInterface for WalletConnectivityHandle {
     }
 
     async fn disconnect_base_node(&mut self, node_id: NodeId) {
-        let _unused = self.sender
+        let _unused = self
+            .sender
             .send(WalletConnectivityRequest::DisconnectBaseNode(node_id))
             .await;
     }

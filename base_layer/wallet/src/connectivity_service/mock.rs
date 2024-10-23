@@ -120,7 +120,6 @@ impl WalletConnectivityInterface for WalletConnectivityMock {
         self.send_shutdown();
     }
 
-
     fn get_connectivity_status(&mut self) -> OnlineStatus {
         *self.online_status_watch.borrow()
     }

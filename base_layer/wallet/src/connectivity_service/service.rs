@@ -32,7 +32,7 @@ use tari_comms::{
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::{
-    sync::{mpsc, oneshot, watch},
+    sync::{mpsc, oneshot, watch, RwLock},
     time,
     time::MissedTickBehavior,
 };
@@ -64,6 +64,7 @@ pub struct WalletConnectivityService {
     pools: HashMap<NodeId, ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
+    busy_acquiring_connection: RwLock<bool>,
 }
 
 struct ClientPoolContainer {
@@ -88,6 +89,7 @@ impl WalletConnectivityService {
             pools: HashMap::new(),
             pending_requests: Vec::new(),
             online_status_watch,
+            busy_acquiring_connection: RwLock::new(false),
         }
     }
 
@@ -161,7 +163,11 @@ impl WalletConnectivityService {
     }
 
     async fn handle_request(&mut self, request: WalletConnectivityRequest) {
-        use WalletConnectivityRequest::{ObtainBaseNodeSyncRpcClient, ObtainBaseNodeWalletRpcClient, DisconnectBaseNode};
+        use WalletConnectivityRequest::{
+            DisconnectBaseNode,
+            ObtainBaseNodeSyncRpcClient,
+            ObtainBaseNodeWalletRpcClient,
+        };
         match request {
             ObtainBaseNodeWalletRpcClient(reply) => {
                 self.handle_pool_request(reply.into()).await;
@@ -187,6 +193,7 @@ impl WalletConnectivityService {
         &mut self,
         reply: oneshot::Sender<RpcClientLease<BaseNodeWalletRpcClient>>,
     ) {
+        self.wait_for_base_node_connection("wallet").await;
         let node_id = if let Some(val) = self.current_base_node() {
             val
         } else {
@@ -227,6 +234,7 @@ impl WalletConnectivityService {
         &mut self,
         reply: oneshot::Sender<RpcClientLease<BaseNodeSyncRpcClient>>,
     ) {
+        self.wait_for_base_node_connection("sync").await;
         let node_id = if let Some(val) = self.current_base_node() {
             val
         } else {
@@ -290,6 +298,7 @@ impl WalletConnectivityService {
         } else {
             return;
         };
+        self.set_busy_acquiring_connection(true).await;
         loop {
             let node_id = if let Some(time) = peer_manager.time_since_last_connection_attempt() {
                 if time < Duration::from_secs(COOL_OFF_PERIOD) {
@@ -363,6 +372,7 @@ impl WalletConnectivityService {
                 break;
             }
         }
+        self.set_busy_acquiring_connection(false).await;
     }
 
     fn peer_list_change_detected(&self, peer_manager: &BaseNodePeerManager) -> bool {
@@ -386,6 +396,32 @@ impl WalletConnectivityService {
 
     fn set_online_status(&self, status: OnlineStatus) {
         self.online_status_watch.send(status);
+    }
+
+    async fn set_busy_acquiring_connection(&mut self, value: bool) {
+        let mut lock = self.busy_acquiring_connection.write().await;
+        *lock = value;
+        trace!(target: LOG_TARGET, "Busy setting up base node connection: '{}'", value);
+    }
+
+    async fn busy_acquiring_connection(&self) -> bool {
+        *self.busy_acquiring_connection.read().await
+    }
+
+    async fn wait_for_base_node_connection(&mut self, rpc_service: &str) {
+        loop {
+            if self.busy_acquiring_connection().await {
+                trace!(
+                    target: LOG_TARGET,
+                    "Busy acquiring base node connection, obtaining the '{}' RPC client will wait for {} s",
+                    rpc_service,
+                    CONNECTIVITY_WAIT
+                );
+                tokio::time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
+            } else {
+                break;
+            }
+        }
     }
 
     async fn try_setup_rpc_pool(&mut self, peer_node_id: NodeId) -> Result<bool, WalletConnectivityError> {
@@ -429,7 +465,6 @@ impl WalletConnectivityService {
             if reply.is_canceled() {
                 continue;
             }
-
             self.handle_pool_request(reply).await;
         }
         Ok(())
