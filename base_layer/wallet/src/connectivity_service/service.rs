@@ -161,13 +161,16 @@ impl WalletConnectivityService {
     }
 
     async fn handle_request(&mut self, request: WalletConnectivityRequest) {
-        use WalletConnectivityRequest::{ObtainBaseNodeSyncRpcClient, ObtainBaseNodeWalletRpcClient};
+        use WalletConnectivityRequest::{ObtainBaseNodeSyncRpcClient, ObtainBaseNodeWalletRpcClient, DisconnectBaseNode};
         match request {
             ObtainBaseNodeWalletRpcClient(reply) => {
                 self.handle_pool_request(reply.into()).await;
             },
             ObtainBaseNodeSyncRpcClient(reply) => {
                 self.handle_pool_request(reply.into()).await;
+            },
+            DisconnectBaseNode(node_id) => {
+                self.disconnect_base_node(node_id).await;
             },
         }
     }
@@ -204,9 +207,7 @@ impl WalletConnectivityService {
                         node_id,
                         e
                     );
-                    if let Some(node_id) = self.current_base_node() {
-                        self.disconnect_base_node(node_id).await;
-                    };
+                    self.disconnect_base_node(node_id).await;
                     self.pending_requests.push(reply.into());
                 },
             },
@@ -246,9 +247,7 @@ impl WalletConnectivityService {
                         node_id,
                         e
                     );
-                    if let Some(node_id) = self.current_base_node() {
-                        self.disconnect_base_node(node_id).await;
-                    };
+                    self.disconnect_base_node(node_id).await;
                     self.pending_requests.push(reply.into());
                 },
             },
@@ -296,6 +295,10 @@ impl WalletConnectivityService {
                 if time < Duration::from_secs(COOL_OFF_PERIOD) {
                     if peer_manager.get_current_peer().node_id == peer_manager.get_next_peer().node_id {
                         // If we only have one peer in the list, wait a bit before retrying
+                        debug!(target: LOG_TARGET,
+                            "Retrying after {}s ...",
+                            Duration::from_secs(CONNECTIVITY_WAIT).as_secs()
+                        );
                         time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
                     }
                     peer_manager.get_current_peer().node_id
@@ -340,21 +343,15 @@ impl WalletConnectivityService {
                         target: LOG_TARGET,
                         "The peer has changed while connecting. Attempting to connect to new base node."
                     );
+                    self.disconnect_base_node(node_id).await;
                 },
                 Err(WalletConnectivityError::ConnectivityError(ConnectivityError::DialCancelled)) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Dial was cancelled. Retrying after {}s ...",
-                        Duration::from_secs(CONNECTIVITY_WAIT).as_secs()
-                    );
-                    time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
+                    debug!(target: LOG_TARGET, "Dial was cancelled.");
+                    self.disconnect_base_node(node_id).await;
                 },
                 Err(e) => {
                     warn!(target: LOG_TARGET, "{}", e);
-                    if self.current_base_node().as_ref() == Some(&node_id) {
-                        self.disconnect_base_node(node_id).await;
-                        time::sleep(Duration::from_secs(CONNECTIVITY_WAIT)).await;
-                    }
+                    self.disconnect_base_node(node_id).await;
                 },
             }
             if self.peer_list_change_detected(&peer_manager) {
