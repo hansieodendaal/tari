@@ -310,19 +310,20 @@ impl PeerConnection {
 
 impl Drop for PeerConnection {
     fn drop(&mut self) {
+        let number_of_rpc_clients = self.number_of_rpc_clients.unwrap_or_default();
         trace!(
             target: LOG_TARGET,
-            "PeerConnection `{}` drop called, still has {} sub-streams and {} handles open",
-            self.peer_node_id, self.substream_count(), self.handle_count(),
+            "PeerConnection `{}` drop called, still has {} sub-streams and {} handles open, with {} RPC clients",
+            self.peer_node_id, self.substream_count(), self.handle_count(), number_of_rpc_clients
         );
-        if let Some(number_of_rpc_clients) = self.number_of_rpc_clients {
-            self.drop_notifier.broadcast(self.peer_node_id.clone());
-            trace!(
-                target: LOG_TARGET,
-                "PeerConnection `{}` on drop notified {} RPC clients to drop connection",
-                self.peer_node_id.clone(), number_of_rpc_clients,
-            );
-        }
+        // if number_of_rpc_clients > 0 {
+        //     self.drop_notifier.broadcast(self.peer_node_id.clone());
+        //     trace!(
+        //         target: LOG_TARGET,
+        //         "PeerConnection `{}` drop called, notified {} potential RPC clients to drop connection",
+        //         self.peer_node_id.clone(), number_of_rpc_clients,
+        //     );
+        // }
     }
 }
 

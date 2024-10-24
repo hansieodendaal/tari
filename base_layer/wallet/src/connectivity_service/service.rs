@@ -32,7 +32,7 @@ use tari_comms::{
 };
 use tari_core::base_node::{rpc::BaseNodeWalletRpcClient, sync::rpc::BaseNodeSyncRpcClient};
 use tokio::{
-    sync::{mpsc, oneshot, watch, RwLock},
+    sync::{mpsc, oneshot, watch},
     time,
     time::MissedTickBehavior,
 };
@@ -64,7 +64,7 @@ pub struct WalletConnectivityService {
     pools: HashMap<NodeId, ClientPoolContainer>,
     online_status_watch: Watch<OnlineStatus>,
     pending_requests: Vec<ReplyOneshot>,
-    busy_acquiring_connection: RwLock<bool>,
+    busy_acquiring_connection_watch: Watch<bool>,
 }
 
 struct ClientPoolContainer {
@@ -80,6 +80,7 @@ impl WalletConnectivityService {
         online_status_watch: Watch<OnlineStatus>,
         connectivity: ConnectivityRequester,
     ) -> Self {
+        let busy_acquiring_connection_watch = Watch::new(false);
         Self {
             config,
             request_receiver,
@@ -89,7 +90,7 @@ impl WalletConnectivityService {
             pools: HashMap::new(),
             pending_requests: Vec::new(),
             online_status_watch,
-            busy_acquiring_connection: RwLock::new(false),
+            busy_acquiring_connection_watch,
         }
     }
 
@@ -205,12 +206,13 @@ impl WalletConnectivityService {
         match self.pools.get(&node_id) {
             Some(pools) => match pools.base_node_wallet_rpc_client.get().await {
                 Ok(client) => {
+                    debug!(target: LOG_TARGET, "Obtained pool RPC 'wallet' connection to base node '{}'", node_id);
                     let _result = reply.send(client);
                 },
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Base node '{}' wallet RPC pool connection failed ({}). Reconnecting...",
+                        "Base node '{}' pool RPC 'wallet' connection failed ({}). Reconnecting...",
                         node_id,
                         e
                     );
@@ -246,12 +248,13 @@ impl WalletConnectivityService {
         match self.pools.get(&node_id) {
             Some(pools) => match pools.base_node_sync_rpc_client.get().await {
                 Ok(client) => {
+                    debug!(target: LOG_TARGET, "Obtained pool RPC 'sync' connection to base node '{}'", node_id);
                     let _result = reply.send(client);
                 },
                 Err(e) => {
                     warn!(
                         target: LOG_TARGET,
-                        "Base node '{}' sync RPC pool connection failed ({}). Reconnecting...",
+                        "Base node '{}' pool RPC 'sync' connection failed ({}). Reconnecting...",
                         node_id,
                         e
                     );
@@ -298,7 +301,7 @@ impl WalletConnectivityService {
         } else {
             return;
         };
-        self.set_busy_acquiring_connection(true).await;
+        self.set_busy_acquiring_connection(true);
         loop {
             let node_id = if let Some(time) = peer_manager.time_since_last_connection_attempt() {
                 if time < Duration::from_secs(COOL_OFF_PERIOD) {
@@ -333,18 +336,19 @@ impl WalletConnectivityService {
                             target: LOG_TARGET,
                             "The peer list has changed while connecting, aborting connection attempt."
                         );
+                        self.set_busy_acquiring_connection(false);
                         self.set_online_status(OnlineStatus::Offline);
                         break;
                     }
                     self.base_node_watch.send(Some(peer_manager.clone()));
-                    if let Err(e) = self.notify_pending_requests().await {
-                        warn!(target: LOG_TARGET, "Error notifying pending RPC requests: {}", e);
+                    self.set_busy_acquiring_connection(false);
+                    if let Ok(true) = self.notify_pending_requests().await {
+                        self.set_online_status(OnlineStatus::Online);
+                        debug!(
+                            target: LOG_TARGET,
+                            "Wallet is ONLINE and connected to base node '{}'", node_id
+                        );
                     }
-                    self.set_online_status(OnlineStatus::Online);
-                    debug!(
-                        target: LOG_TARGET,
-                        "Wallet is ONLINE and connected to base node '{}'", node_id
-                    );
                     break;
                 },
                 Ok(false) => {
@@ -368,11 +372,12 @@ impl WalletConnectivityService {
                     target: LOG_TARGET,
                     "The peer list has changed while connecting, aborting connection attempt."
                 );
+                self.set_busy_acquiring_connection(false);
                 self.set_online_status(OnlineStatus::Offline);
                 break;
             }
         }
-        self.set_busy_acquiring_connection(false).await;
+        trace!(target: LOG_TARGET, "try_setup_rpc_pool: break called");
     }
 
     fn peer_list_change_detected(&self, peer_manager: &BaseNodePeerManager) -> bool {
@@ -398,19 +403,18 @@ impl WalletConnectivityService {
         self.online_status_watch.send(status);
     }
 
-    async fn set_busy_acquiring_connection(&mut self, value: bool) {
-        let mut lock = self.busy_acquiring_connection.write().await;
-        *lock = value;
-        trace!(target: LOG_TARGET, "Busy setting up base node connection: '{}'", value);
+    fn set_busy_acquiring_connection(&mut self, value: bool) {
+        self.busy_acquiring_connection_watch.send(value);
+        trace!(target: LOG_TARGET, "Busy acquiring base node connection: '{}'", value);
     }
 
-    async fn busy_acquiring_connection(&self) -> bool {
-        *self.busy_acquiring_connection.read().await
+    fn busy_acquiring_connection(&self) -> bool {
+        *self.busy_acquiring_connection_watch.borrow()
     }
 
     async fn wait_for_base_node_connection(&mut self, rpc_service: &str) {
         loop {
-            if self.busy_acquiring_connection().await {
+            if self.busy_acquiring_connection() {
                 trace!(
                     target: LOG_TARGET,
                     "Busy acquiring base node connection, obtaining the '{}' RPC client will wait for {} s",
@@ -434,7 +438,7 @@ impl WalletConnectivityService {
         };
         debug!(
             target: LOG_TARGET,
-            "Successfully established peer connection to base node '{}'",
+            "Established peer connection to base node '{}'",
             conn.peer_node_id()
         );
         self.pools.insert(peer_node_id.clone(), ClientPoolContainer {
@@ -442,7 +446,7 @@ impl WalletConnectivityService {
             base_node_wallet_rpc_client: conn
                 .create_rpc_client_pool(self.config.base_node_rpc_pool_size, Default::default()),
         });
-        debug!(target: LOG_TARGET, "Successfully established RPC connection to base node '{}'", peer_node_id);
+        trace!(target: LOG_TARGET, "Created RPC pools for '{}'", peer_node_id);
         Ok(true)
     }
 
@@ -459,15 +463,24 @@ impl WalletConnectivityService {
         }
     }
 
-    async fn notify_pending_requests(&mut self) -> Result<(), WalletConnectivityError> {
+    async fn notify_pending_requests(&mut self) -> Result<bool, WalletConnectivityError> {
         let current_pending = mem::take(&mut self.pending_requests);
+        let mut count = 1;
+        let current_pending_len = current_pending.len();
         for reply in current_pending {
             if reply.is_canceled() {
                 continue;
             }
+            trace!(target: LOG_TARGET, "Handle {} of {} pending RPC pool requests", count, current_pending_len);
             self.handle_pool_request(reply).await;
+            count += 1;
         }
-        Ok(())
+        if self.pending_requests.is_empty() {
+            Ok(true)
+        } else {
+            warn!(target: LOG_TARGET, "{} of {} pending RPC pool requests not handled", count, current_pending_len);
+            Ok(false)
+        }
     }
 }
 
