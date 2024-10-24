@@ -23,12 +23,7 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use tari_comms::{
-    protocol::rpc::{RpcServer, RpcServerHandle},
-    transports::TcpTransport,
-    CommsNode,
-    Minimized,
-};
+use tari_comms::{protocol::rpc::{RpcServer, RpcServerHandle}, transports::TcpTransport, CommsNode, Minimized, PeerConnection};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::async_assert_eventually;
 use tokio::time;
@@ -221,14 +216,17 @@ async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
             .dial_peer(node2.node_identity().node_id().clone())
             .await
             .unwrap();
+        println!("\nconn1_2.handle_count: {}\n", conn1_2.handle_count());
 
         let mut clients = Vec::new();
         for _ in 0..numer_of_clients {
             clients.push(conn1_2.connect_rpc::<GreetingClient>().await.unwrap());
         }
+        println!("\nconn1_2.handle_count: {}\n", conn1_2.handle_count());
 
         (node1, node2, conn1_2, rpc_server2, clients)
     };
+    println!("\nconn1_2.handle_count: {}\n", conn1_2.handle_count());
 
     // Verify all RPC connections are active
     let num_sessions = rpc_server2
@@ -247,7 +245,11 @@ async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
     }
 
     // RPC connections are closed when the peer connection is dropped
-    drop(conn1_2);
+    println!("\nconn1_2.handle_count: {}\n", conn1_2.handle_count());
+    let instances = PeerConnection::get_all_instances();
+    for instance in instances {
+        drop(instance);
+    }
 
     // Verify the RPC connections are closed
     async_assert_eventually!(
@@ -256,7 +258,7 @@ async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
             .await
             .unwrap(),
         expect = 0,
-        max_attempts = 20,
+        max_attempts = 5,
         interval = Duration::from_millis(1000)
     );
     for client in &mut clients {

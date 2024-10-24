@@ -377,7 +377,6 @@ impl WalletConnectivityService {
                 break;
             }
         }
-        trace!(target: LOG_TARGET, "try_setup_rpc_pool: break called");
     }
 
     fn peer_list_change_detected(&self, peer_manager: &BaseNodePeerManager) -> bool {

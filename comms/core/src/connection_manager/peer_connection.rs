@@ -26,10 +26,11 @@ use std::{
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
+        Mutex,
     },
     time::{Duration, Instant},
 };
-
+use once_cell::sync::Lazy;
 use futures::{future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use multiaddr::Multiaddr;
@@ -126,6 +127,10 @@ pub enum PeerConnectionRequest {
 /// ID type for peer connections
 pub type ConnectionId = usize;
 
+#[cfg(test)]
+static ALL_INSTANCES: Lazy<Mutex<Vec<Weak<PeerConnection>>>> = Lazy::new(|| Mutex::new(Vec::new()));
+
+
 /// Request handle for an active peer connection
 #[derive(Debug, Clone)]
 pub struct PeerConnection {
@@ -139,7 +144,7 @@ pub struct PeerConnection {
     substream_counter: AtomicRefCounter,
     handle_counter: Arc<()>,
     drop_notifier: OneshotTrigger<NodeId>,
-    number_of_rpc_clients: Option<usize>,
+    number_of_rpc_clients: Arc<Mutex<Option<usize>>>,
 }
 
 impl PeerConnection {
@@ -152,7 +157,7 @@ impl PeerConnection {
         direction: ConnectionDirection,
         substream_counter: AtomicRefCounter,
     ) -> Self {
-        Self {
+        let instance = Self {
             id,
             request_tx,
             peer_node_id,
@@ -163,8 +168,23 @@ impl PeerConnection {
             substream_counter,
             handle_counter: Arc::new(()),
             drop_notifier: OneshotTrigger::<NodeId>::new(),
-            number_of_rpc_clients: None,
+            number_of_rpc_clients: Arc::new(Mutex::new(None)),
+        };
+
+        #[cfg(test)]
+        {
+            ALL_INSTANCES.lock().unwrap().push(Arc::downgrade(&Arc::new(instance.clone())));
         }
+
+        instance
+    }
+
+    #[cfg(test)]
+    pub fn get_all_instances() -> Vec<Arc<PeerConnection>> {
+        let instances = ALL_INSTANCES.lock().unwrap();
+        instances.iter()
+            .filter_map(|weak_ref| weak_ref.upgrade())
+            .collect()
     }
 
     pub fn peer_node_id(&self) -> &NodeId {
@@ -266,7 +286,10 @@ impl PeerConnection {
             .with_drop_receiver(self.drop_notifier.clone())
             .connect(framed)
             .await?;
-        self.number_of_rpc_clients = Some(self.number_of_rpc_clients.unwrap_or(0) + 1);
+        {
+            let mut rpc_clients = self.number_of_rpc_clients.lock().unwrap();
+            *rpc_clients = Some(rpc_clients.unwrap_or_default() + 1);
+        }
 
         Ok(rpc_client)
     }
@@ -310,20 +333,24 @@ impl PeerConnection {
 
 impl Drop for PeerConnection {
     fn drop(&mut self) {
-        let number_of_rpc_clients = self.number_of_rpc_clients.unwrap_or_default();
-        trace!(
-            target: LOG_TARGET,
-            "PeerConnection `{}` drop called, still has {} sub-streams and {} handles open, with {} RPC clients",
-            self.peer_node_id, self.substream_count(), self.handle_count(), number_of_rpc_clients
-        );
-        // if number_of_rpc_clients > 0 {
-        //     self.drop_notifier.broadcast(self.peer_node_id.clone());
-        //     trace!(
-        //         target: LOG_TARGET,
-        //         "PeerConnection `{}` drop called, notified {} potential RPC clients to drop connection",
-        //         self.peer_node_id.clone(), number_of_rpc_clients,
-        //     );
-        // }
+        if self.handle_count() <= 1 {
+            let number_of_rpc_clients = self.number_of_rpc_clients.lock().unwrap().unwrap_or(0);
+            if number_of_rpc_clients > 0 {
+                self.drop_notifier.broadcast(self.peer_node_id.clone());
+                trace!(
+                    target: LOG_TARGET,
+                    "PeerConnection `{}` drop called, open sub-streams: {}, notified {} potential RPC clients to drop \
+                    connection",
+                    self.peer_node_id.clone(), self.substream_count(), number_of_rpc_clients,
+                );
+            } else {
+                trace!(
+                    target: LOG_TARGET,
+                    "PeerConnection `{}` drop called, open sub-streams: {}, RPC clients: {}",
+                    self.peer_node_id, self.substream_count(), number_of_rpc_clients
+                );
+            }
+        }
     }
 }
 
