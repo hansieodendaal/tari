@@ -23,7 +23,7 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use tari_comms::{protocol::rpc::{RpcServer, RpcServerHandle}, transports::TcpTransport, CommsNode, Minimized, PeerConnection};
+use tari_comms::{protocol::rpc::{RpcServer, RpcServerHandle}, transports::TcpTransport, CommsNode, Minimized};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::async_assert_eventually;
 use tokio::time;
@@ -246,10 +246,6 @@ async fn rpc_server_drop_sessions_when_peer_connection_is_dropped() {
 
     // RPC connections are closed when the peer connection is dropped
     println!("\nconn1_2.handle_count: {}\n", conn1_2.handle_count());
-    let instances = PeerConnection::get_all_instances();
-    for instance in instances {
-        drop(instance);
-    }
 
     // Verify the RPC connections are closed
     async_assert_eventually!(

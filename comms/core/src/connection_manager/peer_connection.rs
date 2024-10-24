@@ -30,7 +30,6 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use once_cell::sync::Lazy;
 use futures::{future::BoxFuture, stream::FuturesUnordered};
 use log::*;
 use multiaddr::Multiaddr;
@@ -127,10 +126,6 @@ pub enum PeerConnectionRequest {
 /// ID type for peer connections
 pub type ConnectionId = usize;
 
-#[cfg(test)]
-static ALL_INSTANCES: Lazy<Mutex<Vec<Weak<PeerConnection>>>> = Lazy::new(|| Mutex::new(Vec::new()));
-
-
 /// Request handle for an active peer connection
 #[derive(Debug, Clone)]
 pub struct PeerConnection {
@@ -157,7 +152,7 @@ impl PeerConnection {
         direction: ConnectionDirection,
         substream_counter: AtomicRefCounter,
     ) -> Self {
-        let instance = Self {
+        Self {
             id,
             request_tx,
             peer_node_id,
@@ -169,22 +164,7 @@ impl PeerConnection {
             handle_counter: Arc::new(()),
             drop_notifier: OneshotTrigger::<NodeId>::new(),
             number_of_rpc_clients: Arc::new(Mutex::new(None)),
-        };
-
-        #[cfg(test)]
-        {
-            ALL_INSTANCES.lock().unwrap().push(Arc::downgrade(&Arc::new(instance.clone())));
         }
-
-        instance
-    }
-
-    #[cfg(test)]
-    pub fn get_all_instances() -> Vec<Arc<PeerConnection>> {
-        let instances = ALL_INSTANCES.lock().unwrap();
-        instances.iter()
-            .filter_map(|weak_ref| weak_ref.upgrade())
-            .collect()
     }
 
     pub fn peer_node_id(&self) -> &NodeId {
