@@ -22,9 +22,11 @@
 
 use std::sync::mpsc;
 
+#[derive(Debug)]
 pub enum Event<I> {
     Input(I),
     Tick,
+    RestartCrosstermLoop,
 }
 
 pub trait EventStream<I> {

@@ -51,7 +51,7 @@ use crate::utils::events::{Event, EventStream};
 
 pub const MAX_WIDTH: u16 = 167;
 
-pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
+pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<bool, ExitError> {
     let mut app = app;
     Handle::current()
         .block_on(async {
@@ -75,7 +75,7 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
     crossterm_loop(app)
 }
 /// This is the main loop of the application UI using Crossterm based events
-fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
+fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<bool, ExitError> {
     let events = CrosstermEvents::new();
     enable_raw_mode().map_err(|e| {
         error!(target: LOG_TARGET, "Error enabling Raw Mode {}", e);
@@ -103,16 +103,19 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
         ExitCode::InterfaceError
     })?;
 
+    let mut all_ok = true;
     loop {
         terminal.draw(|f| app.draw(f)).map_err(|e| {
             error!(target: LOG_TARGET, "Error drawing interface. {}", e);
             ExitCode::InterfaceError
         })?;
-        #[allow(clippy::blocks_in_conditions)]
-        match events.next().map_err(|e| {
+        let key_event = events.next().map_err(|e| {
             error!(target: LOG_TARGET, "Error reading input event: {}", e);
             ExitCode::InterfaceError
-        })? {
+        })?;
+        trace!(target: LOG_TARGET, "Key event: {:?}", key_event);
+        #[allow(clippy::blocks_in_conditions)]
+        match key_event {
             Event::Input(event) => match (event.code, event.modifiers) {
                 (KeyCode::Char(c), KeyModifiers::CONTROL) => app.on_control_key(c),
                 (KeyCode::Char(c), _) => app.on_key(c),
@@ -131,12 +134,21 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
             Event::Tick => {
                 app.on_tick();
             },
+            Event::RestartCrosstermLoop => {
+                if let Err(e) = terminal.clear() {
+                    error!(target: LOG_TARGET, "Error clearing interface. {}", e);
+                } else if let Err(e) = disable_raw_mode() {
+                    error!(target: LOG_TARGET, "Error disabling Raw Mode {}", e);
+                }
+                all_ok = false;
+                return Ok(all_ok);
+            },
         }
         if app.should_quit {
+            trace!(target: LOG_TARGET, "CrosstermBackend should quit");
             break;
         }
     }
-
     terminal.clear().map_err(|e| {
         error!(target: LOG_TARGET, "Error clearing interface. {}", e);
         ExitCode::InterfaceError
@@ -155,5 +167,5 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
         ExitCode::InterfaceError
     })?;
 
-    Ok(())
+    Ok(all_ok)
 }

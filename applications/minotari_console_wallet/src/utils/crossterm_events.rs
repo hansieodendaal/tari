@@ -64,16 +64,19 @@ impl CrosstermEvents {
             let mut last_tick = Instant::now();
             loop {
                 // poll for tick rate duration, if no events, sent tick event.
-                match event::poll(
-                    config
-                        .tick_rate
-                        .checked_sub(last_tick.elapsed())
-                        .unwrap_or_else(|| Duration::from_millis(1)),
-                ) {
+                let effective_tick_rate = config
+                    .tick_rate
+                    .checked_sub(last_tick.elapsed())
+                    .unwrap_or_else(|| Duration::from_millis(1));
+                match event::poll(effective_tick_rate.clone()) {
                     Ok(true) => {
                         if let Ok(CEvent::Key(key)) = event::read() {
-                            if tx.send(Event::Input(key)).is_err() {
-                                info!(target: LOG_TARGET, "Tick event channel shutting down");
+                            if let Err(e) = tx.send(Event::Input(key)) {
+                                info!(
+                                    target: LOG_TARGET,
+                                    "Tick event channel shutting down, key: {:?}, tick rate: {:?}, err: {}",
+                                    key, effective_tick_rate, e
+                                );
                                 // A send operation can only fail if the receiving end of a channel is disconnected.
                                 break;
                             }
@@ -81,12 +84,32 @@ impl CrosstermEvents {
                     },
                     Ok(false) => {},
                     Err(e) => {
-                        error!(target: LOG_TARGET, "Internal error in crossterm events: {}", e);
+                        error!(
+                            target: LOG_TARGET,
+                            "Internal error in crossterm events, tick rate: {:?}, err: {}",
+                            effective_tick_rate, e
+                        );
+                        // // Wait a bit before trying again
+                        thread::sleep(Duration::from_millis(1000));
+                        if e.to_string().contains("No process is on the other end of the pipe") {
+                            if let Err(e) = tx.send(Event::RestartCrosstermLoop) {
+                                info!(
+                                    target: LOG_TARGET,
+                                    "Tick event channel error 'Event::RestartCrosstermLoop', tick rate: {:?}, err: {})",
+                                    effective_tick_rate, e
+                                );
+                            }
+                            break;
+                        }
                     },
                 }
                 if last_tick.elapsed() >= config.tick_rate {
-                    if tx.send(Event::Tick).is_err() {
-                        info!(target: LOG_TARGET, "Tick event channel shutting down");
+                    if let Err(e) = tx.send(Event::Tick) {
+                        info!(
+                            target: LOG_TARGET,
+                            "Tick event channel shutting down 'Event::Tick', tick rate: {:?}, err: {})",
+                            effective_tick_rate, e
+                        );
                         // A send operation can only fail if the receiving end of a channel is disconnected.
                         break;
                     }

@@ -22,7 +22,11 @@
 
 #![allow(dead_code, unused)]
 
-use std::{fs, io::Stdout, path::PathBuf};
+use std::{
+    fs,
+    io::{stdout, Stdout},
+    path::PathBuf,
+};
 
 use clap::Parser;
 use log::*;
@@ -374,24 +378,30 @@ pub fn tui_mode(
         return Err(ExitError::new(ExitCode::WalletError, "Could not select a base node"));
     }
 
-    let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
-        "Minotari Wallet".into(),
-        wallet,
-        config.clone(),
-        base_node_selected,
-        base_node_config.clone(),
-        notifier,
-    ))?;
+    loop {
+        info!(target: LOG_TARGET, "Starting app");
 
-    info!(target: LOG_TARGET, "Starting app");
+        let app = handle.block_on(App::<CrosstermBackend<Stdout>>::new(
+            "Minotari Wallet".into(),
+            wallet.clone(),
+            config.clone(),
+            base_node_selected.clone(),
+            base_node_config.clone(),
+            notifier.clone(),
+        ))?;
 
-    // Do not remove this println!
-    const CUCUMBER_TEST_MARKER: &str = "Minotari Console Wallet running... (TUI mode started)";
-    println!("{}", CUCUMBER_TEST_MARKER);
+        // Do not remove this println!
+        const CUCUMBER_TEST_MARKER: &str = "Minotari Console Wallet running... (TUI mode started)";
+        println!("{}", CUCUMBER_TEST_MARKER);
 
-    {
-        let _enter = handle.enter();
-        ui::run(app)?;
+        {
+            let _enter = handle.enter();
+            if ui::run(app)? {
+                break;
+            } else {
+                trace!(target: LOG_TARGET, "Re-starting app required");
+            }
+        }
     }
 
     info!(
