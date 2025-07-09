@@ -625,7 +625,7 @@ pub async fn make_it_rain(
                         warn!(
                             target: LOG_TARGET,
                             "make-it-rain: Error sending transaction send stats to channel: {}",
-                            e.to_string()
+                            e
                         );
                     }
                 });
@@ -653,7 +653,7 @@ pub async fn make_it_rain(
                         "make-it-rain transaction {} ({}) error: {}",
                         send_stats.i,
                         transaction_type,
-                        e.to_string(),
+                        e,
                     );
                 },
             }

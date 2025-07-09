@@ -237,7 +237,7 @@ async fn it_gracefully_handles_connect_fail_reconnect() {
     mock_state.add_active_connection(conn.clone()).await;
     // Empty out all the calls
     let _result = mock_state.take_calls().await;
-    conn.disconnect(Minimized::No).await.unwrap();
+    conn.disconnect(Minimized::No, "unit test").await.unwrap();
 
     let barrier = Arc::new(Barrier::new(2));
     let pending_request = task::spawn({

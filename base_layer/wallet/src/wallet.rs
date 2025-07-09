@@ -498,7 +498,7 @@ where
         debug!(
             target: LOG_TARGET,
             "Checking for updates (current version: {})...",
-            env!("CARGO_PKG_VERSION").to_string()
+            env!("CARGO_PKG_VERSION")
         );
         match updater.check_for_updates().await {
             Some(update) => {

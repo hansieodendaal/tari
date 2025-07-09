@@ -286,7 +286,10 @@ impl WalletConnectivityService {
 
     async fn disconnect_base_node(&mut self, node_id: NodeId) {
         if let Ok(Some(mut connection)) = self.connectivity.get_connection(node_id.clone()).await {
-            match connection.disconnect(Minimized::No).await {
+            match connection
+                .disconnect(Minimized::No, "WalletConnectivityService disconnect base node")
+                .await
+            {
                 Ok(_) => debug!(target: LOG_TARGET, "Disconnected base node peer {}", node_id),
                 Err(e) => error!(target: LOG_TARGET, "Failed to disconnect base node: {}", e),
             }

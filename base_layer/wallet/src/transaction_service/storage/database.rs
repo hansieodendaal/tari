@@ -885,7 +885,7 @@ fn log_error<T>(req: DbKey, err: TransactionStorageError) -> Result<T, Transacti
         target: LOG_TARGET,
         "Database access error on request: {}: {}",
         req,
-        err.to_string()
+        err
     );
     Err(err)
 }

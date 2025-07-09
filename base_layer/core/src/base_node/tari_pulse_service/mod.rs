@@ -373,7 +373,7 @@ async fn check_health(
                 }
             }
             if let Ok(Some(mut conn)) = comms.get_connection(result.peer.clone()).await {
-                if let Err(err) = conn.disconnect(Minimized::No).await {
+                if let Err(err) = conn.disconnect_if_unused(Minimized::No, "Health check").await {
                     warn!(target: LOG_TARGET, "Failed to disconnect peer {} ({})", result.peer, err);
                 }
             }

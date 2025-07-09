@@ -211,7 +211,12 @@ where
                 });
 
                 if let Ok(Some(connection)) = self.resources.comms_connectivity.get_connection(peer.clone()).await {
-                    if connection.clone().disconnect(Minimized::No).await.is_ok() {
+                    if connection
+                        .clone()
+                        .disconnect(Minimized::No, "UtxoScannerTask new base node connection")
+                        .await
+                        .is_ok()
+                    {
                         debug!(target: LOG_TARGET, "{:?}: Disconnected base node peer {}", self.mode, peer);
                     }
                 }

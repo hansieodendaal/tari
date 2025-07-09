@@ -671,7 +671,7 @@ impl WalletBackend for WalletSqliteDatabase {
                         target: LOG_TARGET,
                         "Failed to decrypt burnt proof: id={}: {}",
                         id,
-                        e.to_string()
+                        e
                     );
                     Err(WalletStorageError::AeadError(e.to_string()))
                 },
@@ -682,7 +682,7 @@ impl WalletBackend for WalletSqliteDatabase {
                     target: LOG_TARGET,
                     "Failed to fetch burnt proof: id={}: {}",
                     id,
-                    e.to_string()
+                    e
                 );
 
                 Err(WalletStorageError::BurntProofNotFound(id))
@@ -711,7 +711,7 @@ impl WalletBackend for WalletSqliteDatabase {
                             target: LOG_TARGET,
                             "Failed to decrypt burnt proof: id={}: {}",
                             entry_id,
-                            e.to_string()
+                            e
                         );
 
                         None

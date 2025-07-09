@@ -435,7 +435,7 @@ fn log_error<T>(req: DbKey, err: WalletStorageError) -> Result<T, WalletStorageE
         target: LOG_TARGET,
         "Database access error on request: {}: {}",
         req.to_key_string(),
-        err.to_string()
+        err
     );
     Err(err)
 }

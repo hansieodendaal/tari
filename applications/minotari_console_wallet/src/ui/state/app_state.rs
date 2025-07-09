@@ -1160,7 +1160,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting new base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses.best().ok_or(UiError::NoAddress)?,
         );
 
         Ok(())
@@ -1206,7 +1206,7 @@ impl AppStateInner {
             target: LOG_TARGET,
             "Setting custom base node peer for wallet: {}::{}",
             peer.public_key,
-            peer.addresses.best().ok_or(UiError::NoAddress)?.to_string(),
+            peer.addresses.best().ok_or(UiError::NoAddress)?,
         );
 
         Ok(())

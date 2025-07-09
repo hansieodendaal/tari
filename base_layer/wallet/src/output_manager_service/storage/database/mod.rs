@@ -501,7 +501,7 @@ fn log_error<T>(req: DbKey, err: OutputManagerStorageError) -> Result<T, OutputM
         target: LOG_TARGET,
         "Database access error on request: {}: {}",
         req,
-        err.to_string()
+        err
     );
     Err(err)
 }
