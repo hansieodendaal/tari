@@ -252,6 +252,7 @@ pub fn get_default_cli() -> Cli {
         spend_key: None,
         libtor_data_dir: None,
         skip_recovery: false,
+        validate_peer_db: false,
     }
 }
 

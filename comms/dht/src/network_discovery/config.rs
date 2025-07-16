@@ -62,7 +62,6 @@ pub struct NetworkDiscoveryConfig {
     #[serde(default)]
     #[serde(with = "serializers::optional_seconds")]
     pub initial_peer_sync_delay: Option<Duration>,
-
     /// The minimum number of peers to attempt to sync with during each seed peer sync operation.
     /// If this many peers are successfully added to the peer DB (across all seed peers attempted
     /// in one round), the current seed_strap round will end early, provided that
@@ -72,18 +71,22 @@ pub struct NetworkDiscoveryConfig {
     /// Default: 15
     #[serde(default)]
     pub seed_peer_min_initial_sync_peers_needed: usize,
-
     /// The minimum number of seed peers that must be successfully contacted (i.e., returned at least one peer)
     /// before an early exit due to `seed_peer_min_initial_sync_peers_needed` can occur.
     /// Default: 5
     #[serde(default)]
     pub min_successful_seed_contacts_for_early_exit: usize,
-
     /// Maximum time to wait for bootstrap to complete before forcing completion
     /// Default: 5 minutes
     #[serde(default)]
     #[serde(with = "serializers::seconds")]
     pub bootstrap_timeout: Duration,
+    /// The number of banable offenses this node will tolerate while syncing peers before the sync peer will be banned.
+    /// Any banable offense will be punished after syc completes or when the threshold is reached; this will let a node
+    /// accept valid peers in the presence of banable offenses.
+    /// Default: 15
+    #[serde(default)]
+    pub peer_sync_immediate_ban_threshold: usize,
 }
 
 impl Default for NetworkDiscoveryConfig {
@@ -101,6 +104,7 @@ impl Default for NetworkDiscoveryConfig {
             seed_peer_min_initial_sync_peers_needed: 15,
             min_successful_seed_contacts_for_early_exit: 5,
             bootstrap_timeout: Duration::from_secs(300), // 5 minutes
+            peer_sync_immediate_ban_threshold: 15,
         }
     }
 }

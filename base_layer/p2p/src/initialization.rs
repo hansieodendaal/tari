@@ -410,7 +410,7 @@ pub async fn add_seed_peers(
         }
         peer.add_flags(PeerFlags::SEED);
 
-        debug!(target: LOG_TARGET, "Adding seed peer [{}]", peer);
+        debug!(target: LOG_TARGET, "Adding seed peer [{:?}]", peer);
         peer_manager
             .add_or_update_peer(peer)
             .await

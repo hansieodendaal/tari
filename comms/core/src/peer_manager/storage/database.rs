@@ -541,6 +541,7 @@ impl PeerDatabaseSql {
                 address_id: None, // This will be set automatically
                 peer_id: 0,       // This will be set automatically
                 address: address.address().to_string(),
+                is_external: address.is_external(),
                 last_seen: address.last_seen(),
                 connection_attempts: if address.connection_attempts() == 0 {
                     None
@@ -643,6 +644,7 @@ impl PeerDatabaseSql {
         for address in peer.addresses.iter() {
             update_addresses_sql.push(UpdateMultiaddrWithStatsSql {
                 address: address.address().to_string(),
+                is_external: address.is_external(),
                 last_seen: address.last_seen(),
                 connection_attempts: if address.connection_attempts() == 0 {
                     None
@@ -757,6 +759,33 @@ impl PeerDatabaseSql {
                 Ok(None)
             }
         })
+    }
+
+    /// Permanently remove peers from the database
+    pub fn hard_delete_peers(&self, node_ids: &[NodeId]) -> Result<Option<usize>, StorageError> {
+        if node_ids.is_empty() {
+            return Ok(None);
+        }
+        let mut conn = self.connection.get_pooled_connection()?;
+
+        let node_ids_hex = node_ids.iter().map(|id| id.to_hex()).collect::<Vec<_>>();
+
+        let deleted_count = conn.immediate_transaction::<_, StorageError, _>(|conn| {
+            diesel::delete(
+                multi_addresses::table.filter(
+                    multi_addresses::peer_id.eq_any(
+                        peers::table
+                            .filter(peers::node_id.eq_any(&node_ids_hex))
+                            .select(peers::peer_id),
+                    ),
+                ),
+            )
+            .execute(conn)?;
+
+            Ok(diesel::delete(peers::table.filter(peers::node_id.eq_any(&node_ids_hex))).execute(conn)?)
+        })?;
+
+        Ok(if deleted_count == 0 { None } else { Some(deleted_count) })
     }
 
     /// Set the metadata for a peer, returning 'None' if the value was empty and the old value if the value was updated
@@ -1370,6 +1399,7 @@ impl PeerDatabaseSql {
         features: Option<PeerFeatures>,
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
+        external_addresses_only: bool,
         n: Option<usize>,
         conn: &mut PooledConnection<ConnectionManager<SqliteConnection>>,
     ) -> Result<Vec<String>, StorageError> {
@@ -1392,6 +1422,10 @@ impl PeerDatabaseSql {
             query = query
                 .filter(multi_addresses::last_seen.is_not_null())
                 .filter(multi_addresses::last_failed_reason.is_null());
+        }
+
+        if external_addresses_only {
+            query = query.filter(multi_addresses::is_external.eq(true));
         }
 
         if let Some(threshold) = stale_peer_threshold {
@@ -1447,6 +1481,7 @@ impl PeerDatabaseSql {
         stale_peer_threshold: Option<Duration>,
         exclude_if_all_address_failed: bool,
         exclusion_distance: Option<NodeDistance>,
+        external_addresses_only: bool,
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1460,6 +1495,7 @@ impl PeerDatabaseSql {
                 features,
                 stale_peer_threshold,
                 exclude_if_all_address_failed,
+                external_addresses_only,
                 None,
                 conn,
             )?;
@@ -1497,6 +1533,7 @@ impl PeerDatabaseSql {
         excluded_peers: &[NodeId],
         features: Option<PeerFeatures>,
         stale_peer_threshold: Option<Duration>,
+        external_addresses_only: bool,
     ) -> Result<Vec<Peer>, StorageError> {
         if n == 0 {
             return Ok(Vec::new());
@@ -1505,10 +1542,36 @@ impl PeerDatabaseSql {
         let mut conn = self.connection.get_pooled_connection()?;
 
         conn.transaction::<_, StorageError, _>(|conn| {
-            let node_ids_hex =
-                self.get_active_peer_node_ids(excluded_peers, features, stale_peer_threshold, true, Some(n), conn)?;
+            let node_ids_hex = self.get_active_peer_node_ids(
+                excluded_peers,
+                features,
+                stale_peer_threshold,
+                true,
+                external_addresses_only,
+                Some(n),
+                conn,
+            )?;
 
-            self.get_peers_by_node_ids_str(&node_ids_hex, conn)
+            let peers = self.get_peers_by_node_ids_str(&node_ids_hex, conn)?;
+            let mut peers_result = Vec::with_capacity(peers.len());
+            if external_addresses_only {
+                for peer in &peers {
+                    if let Some(val) = peer.as_peer_with_external_addresses_only() {
+                        peers_result.push(val);
+                    } else {
+                        let msg = format!(
+                            "Query should have returned peers with external addresses, peer at fault: {}",
+                            peer
+                        );
+                        warn!("{}", msg);
+                        return Err(StorageError::UnexpectedResult(msg));
+                    }
+                }
+            } else {
+                peers_result.extend(peers);
+            }
+
+            Ok(peers_result)
         })
     }
 
@@ -1641,6 +1704,7 @@ pub struct NewMultiaddrWithStatsSql {
     pub address_id: Option<i32>,
     pub peer_id: i64,
     pub address: String,
+    pub is_external: bool,
     pub last_seen: Option<chrono::NaiveDateTime>,
     pub connection_attempts: Option<i32>,
     pub avg_initial_dial_time: Option<i64>,
@@ -1657,6 +1721,7 @@ pub struct NewMultiaddrWithStatsSql {
 #[diesel(table_name = multi_addresses)]
 pub struct UpdateMultiaddrWithStatsSql {
     pub address: String,
+    pub is_external: bool,
     pub last_seen: Option<chrono::NaiveDateTime>,
     pub connection_attempts: Option<i32>,
     pub avg_initial_dial_time: Option<i64>,
@@ -1733,6 +1798,7 @@ impl From<&MultiaddrWithStats> for UpdateMultiaddrWithStatsSql {
     fn from(address: &MultiaddrWithStats) -> Self {
         UpdateMultiaddrWithStatsSql {
             address: address.to_string(),
+            is_external: address.is_external(),
             last_seen: address.last_seen(),
             connection_attempts: Some(u32_to_i32_infallible(address.connection_attempts())),
             avg_initial_dial_time: duration_to_i64_ms_infallible(address.avg_initial_dial_time()),
@@ -1817,6 +1883,7 @@ impl From<(UpdateMultiaddrWithStatsSql, i64)> for NewMultiaddrWithStatsSql {
             address_id: None,
             peer_id,
             address: address.address,
+            is_external: address.is_external,
             last_seen: address.last_seen,
             connection_attempts: address.connection_attempts,
             avg_initial_dial_time: address.avg_initial_dial_time,
@@ -1844,6 +1911,8 @@ mod tests {
         net_address::{MultiaddressesWithStats, PeerAddressSource},
         peer_manager::{
             create_test_peer,
+            create_test_peer_add_internal_addresses,
+            create_test_peer_internal_addresses_only,
             database::{NewMultiaddrWithStatsSql, NewPeerSql, PeerDatabaseSql, MIGRATIONS},
             storage::{
                 database::{duration_to_i64_ms_infallible, u32_to_i32_infallible},
@@ -2070,6 +2139,7 @@ mod tests {
                 Some(Duration::from_secs(60)),
                 true,
                 None,
+                false,
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2083,6 +2153,7 @@ mod tests {
                 Some(Duration::from_secs(60)),
                 true,
                 None,
+                false,
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2096,6 +2167,7 @@ mod tests {
                 Some(Duration::from_secs(60)),
                 true,
                 None,
+                false,
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2110,6 +2182,7 @@ mod tests {
                 Some(Duration::from_secs(60)),
                 true,
                 None,
+                false,
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2260,6 +2333,7 @@ mod tests {
                 Some(Duration::from_secs(60)),
                 true,
                 None,
+                false,
             )
             .unwrap();
         assert_eq!(closest_nodes.len(), 5);
@@ -2293,6 +2367,7 @@ mod tests {
                 Some(Duration::from_secs(60)),
                 true,
                 None,
+                false,
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2329,6 +2404,7 @@ mod tests {
                 Some(Duration::from_secs(60)),
                 true,
                 None,
+                false,
             )
             .unwrap();
         assert_eq!(closest_peers.len(), 5);
@@ -2452,6 +2528,53 @@ mod tests {
         let peer = peers_db.get_peer_by_node_id(&node_peers[5].node_id).unwrap().unwrap();
         assert_eq!(peer.metadata.get(&111).unwrap(), &[1, 2, 3]);
         assert_eq!(peer.metadata.get(&222).unwrap(), &[4, 5, 6]);
+    }
+
+    #[test]
+    #[allow(clippy::too_many_lines)]
+    fn test_hard_delete_peers() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        // Create new node peers
+        let mut node_peers = Vec::with_capacity(12);
+        for i in 0..12 {
+            let mut peer = create_test_peer(false, PeerFeatures::COMMUNICATION_NODE);
+            if i % 4 == 0 {
+                peer.flags = PeerFlags::SEED;
+            }
+            node_peers.push(peer.clone());
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+        // Create new wallet peers
+        let mut wallet_peers = Vec::with_capacity(12);
+        for _i in 0..12 {
+            let peer = create_test_peer(false, PeerFeatures::COMMUNICATION_CLIENT);
+            wallet_peers.push(peer.clone());
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+
+        // Hard delete some node peers
+        let peers_to_delete = vec![
+            node_peers[0].node_id.clone(),
+            node_peers[3].node_id.clone(),
+            node_peers[6].node_id.clone(),
+            node_peers[9].node_id.clone(),
+            wallet_peers[5].node_id.clone(),
+            wallet_peers[10].node_id.clone(),
+        ];
+
+        // Verify the peers were deleted
+        let number_deleted = peers_db.hard_delete_peers(&peers_to_delete).unwrap();
+        assert_eq!(number_deleted.unwrap(), peers_to_delete.len());
+        let all_peers = peers_db.get_all_peers(None).unwrap();
+        all_peers.iter().for_each(|peer| {
+            assert!(!peers_to_delete.contains(&peer.node_id));
+        });
     }
 
     #[test]
@@ -2582,6 +2705,55 @@ mod tests {
         for i in 0..closest_peers.len() - 1 {
             assert!(closest_peers[i].distance(&region_node_id) <= closest_peers[i + 1].distance(&region_node_id));
         }
+    }
+
+    #[test]
+    fn discovery_syncing_peers_with_external_addresses_only() {
+        let db_connection = DbConnection::connect_temp_file_and_migrate(MIGRATIONS).unwrap();
+        let peers_db = PeerDatabaseSql::new(
+            db_connection,
+            &create_test_peer(false, PeerFeatures::COMMUNICATION_NODE),
+        )
+        .unwrap();
+
+        // Create new node and wallet peers with internal and external addresses
+        for _i in 0..20 {
+            let peer = create_test_peer_add_internal_addresses(false, PeerFeatures::COMMUNICATION_NODE);
+            peers_db.add_or_update_peer(peer).unwrap();
+            let peer = create_test_peer_add_internal_addresses(false, PeerFeatures::COMMUNICATION_CLIENT);
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+        assert_eq!(peers_db.size(), 40);
+
+        // Assert that retrieved peers have internal and external addresses
+        let nodes_with_all_addresses = peers_db.get_n_random_active_peers(100, &[], None, None, false).unwrap();
+        assert_eq!(nodes_with_all_addresses.len(), 40);
+        // - Has external address
+        assert!(nodes_with_all_addresses
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().any(|addr| addr.is_external()) }));
+        // - Has internal address
+        assert!(nodes_with_all_addresses
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().any(|addr| !addr.is_external()) }));
+
+        // Add peers with internal addresses only
+        for _i in 0..4 {
+            let peer = create_test_peer_internal_addresses_only(false, PeerFeatures::COMMUNICATION_NODE);
+            peers_db.add_or_update_peer(peer).unwrap();
+            let peer = create_test_peer_internal_addresses_only(false, PeerFeatures::COMMUNICATION_CLIENT);
+            peers_db.add_or_update_peer(peer).unwrap();
+        }
+        assert_eq!(peers_db.size(), 48);
+
+        // Assert that retrieved peers have external addresses only
+        let nodes_with_external_addresses_only =
+            peers_db.get_n_random_active_peers(100, &[], None, None, true).unwrap();
+        assert_eq!(nodes_with_external_addresses_only.len(), 40);
+        // - Has external address only
+        assert!(nodes_with_external_addresses_only
+            .iter()
+            .all(|p| { p.addresses.addresses().iter().all(|addr| addr.is_external()) }));
     }
 
     #[test]
