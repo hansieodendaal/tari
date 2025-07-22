@@ -25,7 +25,7 @@ use std::{
     io,
     sync::Arc,
 };
-
+use std::time::Duration;
 use log::debug;
 use tokio::net::TcpStream;
 
@@ -61,6 +61,7 @@ impl Debug for SocksConfig {
 pub struct SocksTransport {
     socks_config: SocksConfig,
     tcp_transport: TcpTransport,
+    dial_timeout: Option<Duration>,
 }
 
 impl SocksTransport {
@@ -117,6 +118,11 @@ impl Transport for SocksTransport {
 
         let socket = Self::socks_connect(self.tcp_transport.clone(), &self.socks_config, addr).await?;
         Ok(socket)
+    }
+
+    fn with_dial_timeout(&mut self, timeout: Duration) -> &mut Self {
+        self.dial_timeout = Some(timeout);
+        self
     }
 }
 

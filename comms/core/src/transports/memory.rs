@@ -30,7 +30,7 @@ use std::{
     pin::Pin,
     task::{Context, Poll},
 };
-
+use std::time::Duration;
 use futures::stream::Stream;
 use multiaddr::{Multiaddr, Protocol};
 
@@ -78,6 +78,10 @@ impl Transport for MemoryTransport {
         // parse_addr is not used in the async block because of a rust ICE (internal compiler error)
         let port = parse_addr(addr)?;
         Ok(MemorySocket::connect(port)?)
+    }
+
+    fn with_dial_timeout(&mut self, _timeout: Duration) -> &mut Self {
+        self
     }
 }
 
