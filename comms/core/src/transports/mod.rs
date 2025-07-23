@@ -67,4 +67,7 @@ pub trait Transport {
 
     /// Connect (dial) to the given multiaddr
     async fn dial(&self, addr: &Multiaddr) -> Result<Self::Output, Self::Error>;
+
+    /// Dial timeout for the transport
+    fn with_dial_timeout(&mut self, timeout: std::time::Duration) -> &mut Self;
 }
