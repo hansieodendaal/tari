@@ -28,13 +28,14 @@ use std::{
 use log::*;
 use primitive_types::U512;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{CompressedCommitment, HashOutput, PrivateKey};
+use tari_common_types::types::{CompressedCommitment, FixedHash, HashOutput, PrivateKey};
 use tari_mmr::{pruned_hashset::PrunedHashSet, ArrayLike};
 use tari_node_components::blocks::{Block, BlockHeader};
 use tari_transaction_components::{
     aggregated_body::AggregateBody,
     tari_proof_of_work::{Difficulty, PowAlgorithm},
 };
+use tari_utilities::ByteArray;
 
 use crate::{
     blocks::error::BlockError,
@@ -227,6 +228,22 @@ pub struct BlockHeaderAccumulatedData {
     pub target_difficulty: Difficulty,
 }
 
+impl Default for BlockHeaderAccumulatedData {
+    fn default() -> Self {
+        Self {
+            hash: HashOutput::default(),
+            total_kernel_offset: PrivateKey::default(),
+            achieved_difficulty: Difficulty::min(),
+            total_accumulated_difficulty: 1.into(),
+            accumulated_monero_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_tari_randomx_difficulty: AccumulatedDifficulty::min(),
+            accumulated_sha3x_difficulty: AccumulatedDifficulty::min(),
+            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::min(),
+            target_difficulty: Difficulty::min(),
+        }
+    }
+}
+
 impl BlockHeaderAccumulatedData {
     pub fn genesis(hash: HashOutput, total_kernel_offset: PrivateKey) -> Self {
         Self {
@@ -281,6 +298,71 @@ impl Display for BlockHeaderAccumulatedData {
         writeln!(f, "Accumulated sha3 difficulty: {}", self.accumulated_sha3x_difficulty)?;
         writeln!(f, "Target difficulty: {}", self.target_difficulty)?;
         Ok(())
+    }
+}
+
+impl TryFrom<crate::proto::base_node::BlockHeaderAccumulatedData> for BlockHeaderAccumulatedData {
+    type Error = String;
+
+    fn try_from(
+        value: crate::proto::base_node::BlockHeaderAccumulatedData,
+    ) -> Result<BlockHeaderAccumulatedData, String> {
+        Ok(Self {
+            hash: {
+                let buffer: [u8; 32] = value.hash.as_slice().try_into().map_err(|e| format!("{}", e))?;
+                FixedHash::from(buffer)
+            },
+            total_kernel_offset: {
+                let buffer: [u8; 32] = value
+                    .total_kernel_offset
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| format!("{}", e))?;
+                PrivateKey::from_canonical_bytes(&buffer).map_err(|e| format!("{}", e))?
+            },
+            achieved_difficulty: Difficulty::from_u64(value.achieved_difficulty).map_err(|e| format!("{}", e))?,
+            total_accumulated_difficulty: {
+                let buffer: [u8; 32] = value
+                    .total_accumulated_difficulty
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| format!("{}", e))?;
+                U512::from_big_endian(&buffer)
+            },
+            accumulated_monero_randomx_difficulty: AccumulatedDifficulty::from_u128(u128::from_be_bytes(
+                value
+                    .accumulated_monero_randomx_difficulty
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| format!("{}", e))?,
+            ))
+            .map_err(|e| format!("{}", e))?,
+            accumulated_tari_randomx_difficulty: AccumulatedDifficulty::from_u128(u128::from_be_bytes(
+                value
+                    .accumulated_tari_randomx_difficulty
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| format!("{}", e))?,
+            ))
+            .map_err(|e| format!("{}", e))?,
+            accumulated_sha3x_difficulty: AccumulatedDifficulty::from_u128(u128::from_be_bytes(
+                value
+                    .accumulated_sha3x_difficulty
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| format!("{}", e))?,
+            ))
+            .map_err(|e| format!("{}", e))?,
+            accumulated_cuckaroo_difficulty: AccumulatedDifficulty::from_u128(u128::from_be_bytes(
+                value
+                    .accumulated_cuckaroo_difficulty
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| format!("{}", e))?,
+            ))
+            .map_err(|e| format!("{}", e))?,
+            target_difficulty: Difficulty::from_u64(value.target_difficulty).map_err(|e| format!("{}", e))?,
+        })
     }
 }
 

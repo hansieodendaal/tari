@@ -37,6 +37,8 @@ use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
     proto::base_node::{
+        AccumulatedDataRequest,
+        BlockHeaderAccumulatedData,
         FindChainSplitRequest,
         FindChainSplitResponse,
         SyncBlocksRequest,
@@ -87,6 +89,12 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
 
     #[rpc(method = 8)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
+
+    #[rpc(method = 9)]
+    async fn get_accumulated_data(
+        &self,
+        request: Request<AccumulatedDataRequest>,
+    ) -> Result<Streaming<BlockHeaderAccumulatedData>, RpcStatus>;
 }
 
 pub fn create_base_node_sync_rpc_service<B: BlockchainBackend + 'static>(

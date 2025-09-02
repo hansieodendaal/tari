@@ -73,6 +73,41 @@ message SyncUtxosResponse {
   bytes mined_header = 3;
 }
 
+message AccumulatedDataRequest {
+  repeated uint64 header_heights = 1;
+}
+
+message AccumulatedDataResponse {
+  repeated BlockHeaderAccumulatedData accumlated_data = 1;
+}
+
+// Accumulated and other pertinent data in the block header acting as a "condensed blockchain snapshot" for the block
+message BlockHeaderAccumulatedData {
+  // The block hash.
+  bytes hash = 1;
+  // The total accumulated offset for all kernels in the block.
+  bytes total_kernel_offset = 2;
+  // The achieved difficulty for solving the current block using the specified proof of work algorithm.
+  uint64 achieved_difficulty = 3;
+  // The total accumulated difficulty for all blocks since Genesis, but not including this block, tracked
+  // separately.
+  bytes total_accumulated_difficulty = 4;
+  // The total accumulated difficulty for Merged mined monero RandomX proof of work for all blocks since Genesis,
+  // but not including this block, tracked separately.
+  bytes accumulated_monero_randomx_difficulty = 5;
+  // The total accumulated difficulty for Tari RandomX proof of work for all blocks since Genesis,
+  // but not including this block, tracked separately.
+  bytes accumulated_tari_randomx_difficulty = 6;
+  // The total accumulated difficulty for SHA3 proof of work for all blocks since Genesis,
+  // but not including this block, tracked separately.
+  bytes accumulated_sha3x_difficulty = 7;
+  // The total accumulated difficulty for Cuckaroo proof of work for all blocks since Genesis,
+  bytes accumulated_cuckaroo_difficulty = 8;
+  // The target difficulty for solving the current block using the specified proof of work algorithm.
+  uint64 target_difficulty = 9;
+}
+
+
 message SyncUtxosByBlockRequest {
   bytes start_header_hash = 1;
   bytes end_header_hash = 2;

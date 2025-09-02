@@ -33,7 +33,7 @@ use tari_comms::{
     protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
     utils,
 };
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{mpsc, Mutex},
     task,
@@ -51,10 +51,13 @@ use crate::{
         },
         LocalNodeCommsInterface,
     },
+    blocks::BlockHeaderAccumulatedData,
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend},
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
+        AccumulatedDataRequest,
+        BlockHeaderAccumulatedData as RpcBlockHeaderAccumulatedData,
         FindChainSplitRequest,
         FindChainSplitResponse,
         SyncBlocksRequest,
@@ -609,5 +612,85 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         task.run(request, tx).await?;
 
         Ok(Streaming::new(rx))
+    }
+
+    #[instrument(level = "trace", skip(self), err)]
+    #[allow(clippy::blocks_in_conditions)]
+    async fn get_accumulated_data(
+        &self,
+        request: Request<AccumulatedDataRequest>,
+    ) -> Result<Streaming<RpcBlockHeaderAccumulatedData>, RpcStatus> {
+        let req = request.message();
+        let peer_node_id = request.context().peer_node_id();
+        let mut header_heights = req.header_heights.clone();
+        header_heights.sort();
+        debug!(
+            target: LOG_TARGET,
+            "Received get_accumulated_data-{} request for header heights {:?}",
+            peer_node_id,
+            header_heights,
+        );
+
+        let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;
+        let (tx, rx) = mpsc::channel(100);
+        let db = self.db();
+        task::spawn(async move {
+            // Move session token into task
+            let peer_node_id = session_token;
+            for height in header_heights {
+                if tx.is_closed() {
+                    break;
+                }
+                let res = db
+                    .fetch_chain_header(height)
+                    .await
+                    .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+
+                if tx.is_closed() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Get accumulated data for peer '{peer_node_id}' terminated early",
+                    );
+                    break;
+                }
+
+                match res {
+                    Ok(chain_header) => {
+                        let response = RpcBlockHeaderAccumulatedData::from(chain_header.accumulated_data());
+                        if tx.send(Ok(response)).await.is_err() {
+                            break;
+                        }
+                    },
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "DB error while fetching accumulated data: {err}");
+                        let _result = tx
+                            .send(Err(RpcStatus::general("DB error while fetching accumulated data")))
+                            .await;
+                        break;
+                    },
+                }
+            }
+        });
+        Ok(Streaming::new(rx))
+    }
+}
+
+impl From<&BlockHeaderAccumulatedData> for RpcBlockHeaderAccumulatedData {
+    fn from(value: &BlockHeaderAccumulatedData) -> Self {
+        Self {
+            hash: value.hash.to_vec(),
+            total_kernel_offset: value.total_kernel_offset.as_bytes().to_vec(),
+            achieved_difficulty: value.achieved_difficulty.as_u64(),
+            total_accumulated_difficulty: {
+                let buffer = &mut [0u8; 32];
+                value.total_accumulated_difficulty.to_big_endian(buffer);
+                buffer.to_vec()
+            },
+            accumulated_monero_randomx_difficulty: value.accumulated_monero_randomx_difficulty.to_be_bytes(),
+            accumulated_tari_randomx_difficulty: value.accumulated_tari_randomx_difficulty.to_be_bytes(),
+            accumulated_sha3x_difficulty: value.accumulated_sha3x_difficulty.to_be_bytes(),
+            accumulated_cuckaroo_difficulty: value.accumulated_cuckaroo_difficulty.to_be_bytes(),
+            target_difficulty: value.target_difficulty.as_u64(),
+        }
     }
 }

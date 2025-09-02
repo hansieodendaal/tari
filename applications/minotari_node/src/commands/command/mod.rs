@@ -23,6 +23,7 @@
 mod add_peer;
 mod ban_peer;
 mod block_timing;
+mod check_chain_consistency;
 mod check_db;
 mod check_for_updates;
 mod create_tls_certs;
@@ -122,6 +123,7 @@ pub enum Command {
     RewindBlockchain(rewind_blockchain::Args),
     AddPeer(add_peer::ArgsAddPeer),
     TestPeerLiveness(test_peer_liveness::ArgsTestPeerLiveness),
+    CheckChainConsistency(check_chain_consistency::ArgsCheckChainConsistency),
     BanPeer(ban_peer::ArgsBan),
     UnbanPeer(ban_peer::ArgsUnban),
     UnbanAllPeers(unban_all_peers::Args),
@@ -245,6 +247,7 @@ impl CommandContext {
                 Command::Watch(_) |
                 Command::ListValidatorNodes(_) |
                 Command::CreateTlsCerts(_) |
+                Command::CheckChainConsistency(_) |
                 Command::Quit(_) |
                 Command::Exit(_) => 30,
                 // This test can potentially take a longer time and should be allowed to run longer
@@ -283,6 +286,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::GetDbStats(args) => self.handle_command(args).await,
             Command::GetPeer(args) => self.handle_command(args).await,
             Command::TestPeerLiveness(args) => self.handle_command(args).await,
+            Command::CheckChainConsistency(args) => self.handle_command(args).await,
             Command::GetStateInfo(args) => self.handle_command(args).await,
             Command::GetNetworkStats(args) => self.handle_command(args).await,
             Command::ListPeers(args) => self.handle_command(args).await,
