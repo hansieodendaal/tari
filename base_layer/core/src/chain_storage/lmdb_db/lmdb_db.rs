@@ -4091,7 +4091,7 @@ impl fmt::Display for MetadataValue {
 
 #[allow(clippy::too_many_lines)]
 fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
-    const MIGRATION_VERSION: u64 = 8;
+    const MIGRATION_VERSION: u64 = 7;
     db.stats_collector().set_target_db_version(MIGRATION_VERSION);
     let txn = db.read_transaction()?;
     let k = MetadataKey::MigrationVersion;
@@ -4401,8 +4401,7 @@ fn run_migrations(db: &mut LMDBDatabase) -> Result<(), ChainStorageError> {
             write_txn.commit()?;
         }
 
-
-        if migrate_from_version == 7 {
+        if migrate_from_version == 6 {
             info!(target: LOG_TARGET, "[MIGRATIONS] v{migrate_from_version}: Starting burn commitments index migration management");
 
             // Set the burn commitment index rebuild status to done for new databases or to default for existing
