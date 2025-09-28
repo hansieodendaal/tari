@@ -188,12 +188,6 @@ pub trait BlockchainBackend: Send + Sync + 'static {
         header_accum_data: BlockHeaderAccumulatedData,
         last_chain_header: ChainHeader,
     ) -> Result<AccumulatedDataRebuildStatus, ChainStorageError>;
-    /// Builds the burn commitments index for a given block height, with stats.
-    fn update_burn_commitments_index(
-        &self,
-        height: u64,
-        last_chain_header: ChainHeader,
-    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError>;
     /// Returns the UTXO count
     fn utxo_count(&self) -> Result<usize, ChainStorageError>;
     /// Returns the kernel count

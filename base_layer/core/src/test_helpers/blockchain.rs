@@ -423,17 +423,6 @@ impl BlockchainBackend for TempDatabase {
             .update_accumulated_difficulty(height, header_accum_data, last_chain_header)
     }
 
-    fn update_burn_commitments_index(
-        &self,
-        height: u64,
-        last_chain_header: ChainHeader,
-    ) -> Result<BurnCommitmentIndexRebuildStatus, ChainStorageError> {
-        self.db
-            .as_ref()
-            .unwrap()
-            .update_burn_commitments_index(height, last_chain_header)
-    }
-
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {
         self.db.as_ref().unwrap().utxo_count()
     }
