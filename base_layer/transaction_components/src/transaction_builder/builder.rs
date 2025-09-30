@@ -18,6 +18,7 @@ use tari_common_types::{
     },
 };
 use tari_script::{push_pubkey_script, script, ExecutionStack};
+use tari_utilities::hex::Hex;
 
 use crate::{
     consensus::ConsensusConstants,
@@ -33,6 +34,7 @@ use crate::{
         memo_field::{MemoField, TxType},
         one_sided::{shared_secret_to_output_encryption_key, shared_secret_to_output_spending_key},
         CoreTransactionBuilder,
+        EncryptedData,
         KernelBuilder,
         KernelFeatures,
         OutputFeatures,
@@ -703,23 +705,66 @@ where KM: TransactionKeyManagerInterface
         ))
     }
 
-    async fn change_encrypted_data(
+    // Helper function to change the payet_id and encrypted data if the fee has changed due to a change output
+    async fn change_encrypted_data_if_fee_changed(
         key_manager: &KM,
         output_pair: &mut OutputPair,
-        fee: MicroMinotari,
+        recipient_address: &TariAddress,
+        sender_offset_key_id: Option<TariKeyId>,
+        final_fee: MicroMinotari,
     ) -> Result<(), TransactionBuilderError> {
         let mut payment_id = output_pair.output.payment_id().clone();
-        if payment_id.get_fee().is_some() {
-            payment_id.set_fee(fee);
+        if let Some(existing_fee) = payment_id.get_fee() {
+            if existing_fee == final_fee {
+                debug!(
+                    target: LOG_TARGET,
+                    "[Update fee] Fee ({}) was correct for output '{}'",
+                    existing_fee, output_pair.output.commitment().to_hex()
+                );
+                return Ok(());
+            } else {
+                debug!(
+                    target: LOG_TARGET,
+                    "[Update fee] Changing fee changed from {} to {} for output '{}'",
+                    existing_fee, final_fee, output_pair.output.commitment().to_hex()
+                );
+            }
+            payment_id.set_fee(final_fee);
+
+            let shared_secret = key_manager
+                .get_diffie_hellman_shared_secret(
+                    sender_offset_key_id
+                        .as_ref()
+                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    recipient_address
+                        .public_view_key()
+                        .ok_or(TransactionBuilderError::InvalidAddressNoViewKey)?,
+                )
+                .await?;
+            let encryption_private_key = shared_secret_to_output_encryption_key(&shared_secret)?;
+            let encryption_key = key_manager.import_key(encryption_private_key.clone()).await?;
+
+            let custom_recovery_key_id = if EncryptedData::decrypt_data(
+                &encryption_private_key,
+                output_pair.output.commitment(),
+                output_pair.output.encrypted_data(),
+            )
+            .is_ok()
+            {
+                Some(&encryption_key)
+            } else {
+                None
+            };
 
             let encrypted_data = key_manager
                 .encrypt_data_for_recovery(
                     output_pair.output.commitment_mask_key_id(),
-                    None, // TODO: Do we need to pass an encryption key here?
+                    custom_recovery_key_id,
                     output_pair.output.value().as_u64(),
                     payment_id.clone(),
                 )
                 .await?;
+            // This will change all the necessary fields in the wallet output
             output_pair
                 .output
                 .change_encrypted_data(
@@ -742,7 +787,7 @@ where KM: TransactionKeyManagerInterface
     pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
         self.check_conditions()?;
 
-        let (total_fee, change_output) = self.add_change_if_required().await?;
+        let (total_fee, mut change_output) = self.add_change_if_required().await?;
         let mut core_tx_builder = CoreTransactionBuilder::new();
 
         let (total_public_nonce, total_public_excess) = self
@@ -763,7 +808,14 @@ where KM: TransactionKeyManagerInterface
         }
         let mut sent_outputs = Vec::new();
         for recipient in self.recipient_outputs.iter_mut() {
-            Self::change_encrypted_data(&self.key_manager, &mut recipient.output, total_fee).await?;
+            Self::change_encrypted_data_if_fee_changed(
+                &self.key_manager,
+                &mut recipient.output.clone(),
+                &recipient.recipient_address,
+                recipient.output.sender_offset_key_id.clone(),
+                total_fee,
+            )
+            .await?;
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {
@@ -814,7 +866,15 @@ where KM: TransactionKeyManagerInterface
             script_keys.push(input.output.script_key_id().clone());
         }
 
-        for output in &self.custom_outputs {
+        for output in self.custom_outputs.iter_mut() {
+            Self::change_encrypted_data_if_fee_changed(
+                &self.key_manager,
+                output,
+                &self.own_address,
+                output.sender_offset_key_id.clone(),
+                total_fee,
+            )
+            .await?;
             signature = &signature +
                 self.key_manager
                     .get_partial_txo_kernel_signature(
@@ -872,7 +932,15 @@ where KM: TransactionKeyManagerInterface
             sender_offset_keys.push(sender_offset_key_id);
         }
 
-        if let Some(change) = &change_output {
+        if let Some(change) = &mut change_output {
+            Self::change_encrypted_data_if_fee_changed(
+                &self.key_manager,
+                change,
+                &self.own_address,
+                change.sender_offset_key_id.clone(),
+                total_fee,
+            )
+            .await?;
             core_tx_builder.add_output(change.output.to_transaction_output()?);
             signature = &signature +
                 &self
