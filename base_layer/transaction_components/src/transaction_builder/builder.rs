@@ -703,6 +703,40 @@ where KM: TransactionKeyManagerInterface
         ))
     }
 
+    async fn change_encrypted_data(
+        key_manager: &KM,
+        output_pair: &mut OutputPair,
+        fee: MicroMinotari,
+    ) -> Result<(), TransactionBuilderError> {
+        let mut payment_id = output_pair.output.payment_id().clone();
+        if payment_id.get_fee().is_some() {
+            payment_id.set_fee(fee);
+
+            let encrypted_data = key_manager
+                .encrypt_data_for_recovery(
+                    output_pair.output.commitment_mask_key_id(),
+                    None, // TODO: Do we need to pass an encryption key here?
+                    output_pair.output.value().as_u64(),
+                    payment_id.clone(),
+                )
+                .await?;
+            output_pair
+                .output
+                .change_encrypted_data(
+                    encrypted_data,
+                    output_pair
+                        .sender_offset_key_id
+                        .as_ref()
+                        .ok_or(TransactionBuilderError::SenderOffsetKeyIdMissing)?,
+                    payment_id,
+                    key_manager,
+                )
+                .await?;
+        }
+
+        Ok(())
+    }
+
     /// Build the transaction. This will return an error if the transaction is invalid.
     #[allow(clippy::too_many_lines)]
     pub async fn build(mut self) -> Result<FinalizedTransaction, TransactionBuilderError> {
@@ -728,7 +762,8 @@ where KM: TransactionKeyManagerInterface
             core_tx_builder.add_output(output.output.to_transaction_output()?);
         }
         let mut sent_outputs = Vec::new();
-        for recipient in &self.recipient_outputs {
+        for recipient in self.recipient_outputs.iter_mut() {
+            Self::change_encrypted_data(&self.key_manager, &mut recipient.output, total_fee).await?;
             let output = recipient.output.output.to_transaction_output()?;
             sent_outputs.push(recipient.output.clone());
             if self.tx_type == TxType::Burn {
