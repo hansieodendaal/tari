@@ -46,6 +46,9 @@ use minotari_app_grpc::tari_rpc::{
     ClaimHtlcRefundResponse,
     ClaimShaAtomicSwapRequest,
     ClaimShaAtomicSwapResponse,
+    CoinBucket,
+    CoinHistogramRequest,
+    CoinHistogramResponse,
     CoinSplitRequest,
     CoinSplitResponse,
     CreateBurnTransactionRequest,
@@ -94,6 +97,7 @@ use minotari_app_grpc::tari_rpc::{
     PrepareOneSidedTransactionForSigningResponse,
     PrepareWithdrawMultisigTransactionRequest,
     PrepareWithdrawMultisigTransactionResponse,
+    RangeLimitedCoinJoinRequest,
     RegisterValidatorNodeRequest,
     RegisterValidatorNodeResponse,
     ReplaceByFeeRequest,
@@ -128,7 +132,7 @@ use minotari_wallet::{
     connectivity_service::{OnlineStatus, WalletConnectivityInterface, UNKNOWN_LATENCY_MS},
     error::WalletStorageError,
     legacy_transaction_protocol::recipient::RecipientState,
-    output_manager_service::{handle::OutputManagerHandle, UtxoSelectionCriteria},
+    output_manager_service::{handle::OutputManagerHandle, RangeLimit, UtxoSelectionCriteria},
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
@@ -1175,6 +1179,97 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(TransferResponse { results }))
     }
 
+    #[allow(clippy::too_many_lines)]
+    async fn range_limited_coin_join(
+        &self,
+        request: Request<RangeLimitedCoinJoinRequest>,
+    ) -> Result<Response<TransferResponse>, Status> {
+        let message = request.into_inner();
+
+        let fee_per_gram = if let Some(fee) = message.fee_per_gram {
+            fee.value
+        } else {
+            1
+        };
+        let payment_id = if let Some(user_pay_id) = message.user_payment_id {
+            let bytes = match (
+                user_pay_id.u256.is_empty(),
+                user_pay_id.utf8_string.is_empty(),
+                user_pay_id.user_bytes.is_empty(),
+            ) {
+                (false, true, true) => user_pay_id.u256,
+                (true, false, true) => user_pay_id.utf8_string.as_bytes().to_vec(),
+                (true, true, false) => user_pay_id.user_bytes,
+                _ => {
+                    return Err(Status::invalid_argument(
+                        "user_payment_id must be one of u256, utf8_string or user_bytes".to_string(),
+                    ))
+                },
+            };
+            MemoField::new_open(bytes, TxType::PaymentToSelf).map_err(|e| {
+                error!(target: LOG_TARGET, "range_limit_coin_join: {}", e);
+                Status::invalid_argument(format!("range_limit_coin_join: {}", e))
+            })?
+        } else {
+            MemoField::new_empty()
+        };
+
+        let mut transaction_service = self.get_transaction_service();
+        let tx_id = transaction_service
+            .send_range_limited_coin_join_transaction(
+                UtxoSelectionCriteria {
+                    range_limit: Some(RangeLimit {
+                        range: message.lower_bound..message.upper_bound,
+                        transaction_input_limit: message.maximum_inputs_per_transaction,
+                        target_minimum_amount: message.target_amount,
+                    }),
+                    ..Default::default()
+                },
+                OutputFeatures::default(),
+                fee_per_gram.into(),
+                payment_id,
+            )
+            .await
+            .map_err(|e| Status::internal(format!("range_limit_coin_join: Failed to send transaction: {e}")))?;
+        let mut results = Vec::new();
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .await
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
+        let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
+            loop {
+                let tx = self
+                    .get_transaction_service()
+                    .get_any_transaction(tx_id)
+                    .await
+                    .map_err(|e| Status::internal(format!("range_limit_coin_join: {e}")));
+
+                if let Ok(Some(tx)) = tx {
+                    break tx;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .map_err(|_| {
+            error!(target: LOG_TARGET, "range_limit_coin_join: Transaction {tx_id} not found within timeout");
+            Status::not_found(format!(
+                "range_limit_coin_join: Transaction {tx_id} not found within timeout"
+            ))
+        })?;
+        let address = wallet_tx.destination_address().expect("cannot fail").to_string();
+        let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
+        results.push(minotari_app_grpc::tari_rpc::TransferResult {
+            address,
+            transaction_id: tx_id.into(),
+            is_success: true,
+            failure_message: Default::default(),
+            transaction_info: Some(final_tx),
+        });
+        Ok(Response::new(minotari_app_grpc::tari_rpc::TransferResponse { results }))
+    }
+
     async fn create_burn_transaction(
         &self,
         request: Request<CreateBurnTransactionRequest>,
@@ -1925,6 +2020,43 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(format!("{e:?}")))?;
 
         Ok(Response::new(CoinSplitResponse { tx_id: tx_id.into() }))
+    }
+
+    async fn coin_histogram(
+        &self,
+        _request: Request<CoinHistogramRequest>,
+    ) -> Result<Response<CoinHistogramResponse>, Status> {
+        let mut wallet = self.wallet.clone();
+
+        // These ranges are hard-coded for now - easy enough to change later if needed
+        let bucket_ranges = vec![
+            0..1_000u64,                             // 0 - < 1,000 uT
+            1_000..100_000,                          // 1,000 uT - < 100,000 uT
+            100_000..1_000_000,                      // 100,000 uT - < 1 T
+            1_000_000..1_000_000_000,                // 1 T - < 1,000 T
+            1_000_000_000..100_000_000_000,          // 1,000 T - < 100,000 T
+            100_000_000_000..21_000_000_000_000_000, // 100,000 T - < 21,000,000 T (max supply)
+        ];
+
+        let buckets = wallet
+            .output_manager_service
+            .count_outputs_in_ranges(bucket_ranges.clone())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let mut buckets_response = Vec::with_capacity(buckets.len());
+        for bucket in &buckets {
+            buckets_response.push(CoinBucket {
+                count: bucket.number_of_outputs,
+                total_amount: bucket.total_value,
+                lower_bound: bucket.range.start,
+                upper_bound: bucket.range.end,
+            });
+        }
+
+        Ok(Response::new(CoinHistogramResponse {
+            buckets: buckets_response,
+        }))
     }
 
     async fn import_utxos(
