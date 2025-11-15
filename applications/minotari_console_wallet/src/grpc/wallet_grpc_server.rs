@@ -1239,9 +1239,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
         } else {
             MemoField::new_empty()
         };
+        let wallet_address = self
+            .wallet
+            .get_wallet_one_sided_address()
+            .await
+            .map_err(|e| Status::internal(format!("{e:?}")))?;
 
         let mut transaction_service = self.get_transaction_service();
-        loop {
+        let batch_result = loop {
             let tx_result = transaction_service
                 .send_range_limited_coin_join_transaction(
                     UtxoSelectionCriteria {
@@ -1260,35 +1265,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
             let tx_id = match tx_result {
                 Ok(val) => val,
                 Err(err) => {
-                    let err_str = err.to_string();
                     if let TransactionServiceError::OutputManagerError(OutputManagerError::RangeLimitError {
                         range_exhausted,
                         ..
                     }) = err
                     {
                         if range_exhausted && !results.is_empty() {
-                            break;
+                            break Ok(());
                         }
                     }
-                    return Err(Status::internal(format!(
-                        "range_limit_coin_join: Failed to send transaction: {}",
-                        err_str
-                    )));
+                    break Err(err);
                 },
             };
 
-            let wallet_address = self
-                .wallet
-                .get_wallet_one_sided_address()
-                .await
-                .map_err(|e| Status::internal(format!("{e:?}")))?;
             let wallet_tx = timeout(Duration::from_millis(self.wallet.config.grpc_db_write_timeout), async {
                 loop {
-                    let tx = self
-                        .get_transaction_service()
-                        .get_any_transaction(tx_id)
-                        .await
-                        .map_err(|e| Status::internal(format!("range_limit_coin_join: {e}")));
+                    let tx = self.get_transaction_service().get_any_transaction(tx_id).await;
 
                     if let Ok(Some(tx)) = tx {
                         break tx;
@@ -1296,13 +1288,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     sleep(Duration::from_millis(10)).await;
                 }
             })
-            .await
-            .map_err(|_| {
-                error!(target: LOG_TARGET, "range_limit_coin_join: Transaction {tx_id} not found within timeout");
-                Status::not_found(format!(
-                    "range_limit_coin_join: Transaction {tx_id} not found within timeout"
-                ))
-            })?;
+            .await;
+            let wallet_tx = match wallet_tx {
+                Ok(val) => val,
+                Err(_) => {
+                    break Err(TransactionServiceError::Other(format!(
+                        "Transaction {tx_id} not found within timeout"
+                    )))
+                },
+            };
 
             let address = wallet_tx.destination_address().expect("cannot fail").to_string();
             let final_tx = convert_wallet_transaction_into_transaction_info(wallet_tx, &wallet_address);
@@ -1313,8 +1307,15 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 failure_message: Default::default(),
                 transaction_info: Some(final_tx),
             });
+        };
+
+        match batch_result {
+            Ok(_) => Ok(Response::new(minotari_app_grpc::tari_rpc::TransferResponse { results })),
+            Err(err) => {
+                error!(target: LOG_TARGET, "range_limit_coin_join: {}", err);
+                Err(Status::internal(format!("range_limit_coin_join: {}", err)))
+            },
         }
-        Ok(Response::new(minotari_app_grpc::tari_rpc::TransferResponse { results }))
     }
 
     async fn create_burn_transaction(
