@@ -1004,6 +1004,7 @@ where
             .range_limit
             .ok_or_else(|| OutputManagerError::RangeLimitError {
                 reason: "Range limit must be specified for range limited coin-join UTXO selection".to_string(),
+                range_exhausted: false,
             })?
             .target_minimum_amount;
         debug!(
@@ -1635,6 +1636,7 @@ where
         if selection_criteria.range_limit.is_some() {
             return Err(OutputManagerError::RangeLimitError {
                 reason: "Range limit coin-join cannot be set for create_pay_to_self_transaction".to_string(),
+                range_exhausted: false,
             });
         }
         let covenant = Covenant::default();
@@ -1929,6 +1931,7 @@ where
                 .range_limit
                 .ok_or_else(|| OutputManagerError::RangeLimitError {
                     reason: "Range limit must be specified for range limited coin-join UTXO selection".to_string(),
+                    range_exhausted: false,
                 })?;
         debug!(
             target: LOG_TARGET,
@@ -1960,6 +1963,7 @@ where
                     "No outputs could be selected for the specified range: {:?}",
                     range_limit_criteria
                 ),
+                range_exhausted: true,
             });
         } else {
             trace!(target: LOG_TARGET, "We found {} UTXOs that match the range limit criteria", utxos.len());
@@ -1986,6 +1990,7 @@ where
                     "Minimum fee exceeds total value in range: {} vs. {}",
                     fee_without_change, total_value
                 ),
+                range_exhausted: false,
             });
         }
 

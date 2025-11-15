@@ -62,7 +62,7 @@ pub enum OutputManagerError {
     #[error("DHT outbound error: `{0}`")]
     DhtOutboundError(#[from] DhtOutboundError),
     #[error("Error processing range limit output selection criteria: {reason}")]
-    RangeLimitError { reason: String },
+    RangeLimitError { reason: String, range_exhausted: bool },
     #[error("Conversion error: `{0}`")]
     ConversionError(String),
     #[error("Not all the transaction inputs and outputs are present to be confirmed: {0}")]
