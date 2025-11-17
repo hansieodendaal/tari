@@ -35,6 +35,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::{LegacyImportStatus, TransactionDirection, TxId},
     types::{CompressedCommitment, CompressedPublicKey, CompressedSignature, FixedHash, HashOutput, PrivateKey},
+    wallet_types::FeeType,
 };
 use tari_comms::types::CommsPublicKey;
 use tari_max_size::MaxSizeString;
@@ -224,7 +225,7 @@ pub enum TransactionServiceRequest {
     SendRangeLimitedCoinJoinTransaction {
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinotari,
+        fee: FeeType,
         payment_id: MemoField,
     },
     SendOneSidedToStealthAddressTransaction {
@@ -1295,7 +1296,7 @@ impl TransactionServiceHandle {
         &mut self,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee: FeeType,
         payment_id: MemoField,
     ) -> Result<TxId, TransactionServiceError> {
         match self
@@ -1303,7 +1304,7 @@ impl TransactionServiceHandle {
             .call(TransactionServiceRequest::SendRangeLimitedCoinJoinTransaction {
                 selection_criteria,
                 output_features: Box::new(output_features),
-                fee_per_gram,
+                fee,
                 payment_id,
             })
             .await

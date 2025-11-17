@@ -38,6 +38,7 @@ use log::*;
 use minotari_app_grpc::tari_rpc::{
     self,
     payment_recipient::PaymentType,
+    range_limited_coin_join_request::FeeType as GrpcFeeType,
     wallet_server,
     BroadcastSignedOneSidedTransactionRequest,
     BroadcastSignedOneSidedTransactionResponse,
@@ -159,6 +160,7 @@ use tari_common_types::{
         PrivateKey,
         SignatureWithDomain,
     },
+    wallet_types::FeeType,
 };
 use tari_comms::{connectivity::ConnectivityStatus, types::CommsPublicKey};
 use tari_hashing::WalletMessageSigningDomain;
@@ -1191,6 +1193,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<TransferResponse>, Status> {
         let message = request.into_inner();
 
+        // Simple verification of range and target amount
         let range = message.lower_bound..message.upper_bound;
         let mut wallet = self.wallet.clone();
         let mut results = Vec::new();
@@ -1199,23 +1202,21 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .count_outputs_in_ranges(vec![range])
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
-        if buckets.is_empty() {
-            return Err(Status::internal(format!(
-                "The wallet does not have sufficient funds in the specified range: 0 < {}",
-                message.target_amount
-            )));
-        }
-        if !buckets.is_empty() && buckets[0].total_value < message.target_amount {
+        let bucket = buckets.first().ok_or(Status::internal(format!(
+            "The wallet does not have any funds in the specified range: {}..{}",
+            message.lower_bound, message.upper_bound
+        )))?;
+        if bucket.total_value < message.target_amount {
             return Err(Status::internal(format!(
                 "The wallet does not have sufficient funds in the specified range: {} < {}",
-                buckets[0].total_value, message.target_amount
+                bucket.total_value, message.target_amount
             )));
         }
 
-        let fee_per_gram = if let Some(fee) = message.fee_per_gram {
-            fee.value
-        } else {
-            1
+        // Extract fee, payment id, and wallet address
+        let fee = match GrpcFeeType::try_from(message.fee_type).unwrap_or(GrpcFeeType::TotalFee) {
+            GrpcFeeType::TotalFee => FeeType::TotalFee(message.total_fee_or_fee_per_gram.max(1)),
+            GrpcFeeType::FeePerGram => FeeType::FeePerGram(message.total_fee_or_fee_per_gram.max(1)),
         };
         let payment_id = if let Some(user_pay_id) = message.user_payment_id {
             let bytes = match (
@@ -1245,6 +1246,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{e:?}")))?;
 
+        // Start sending coin join transactions until we exhaust the range or reach the target amount
+        // Note:
+        //   This is done synchronously to ensure each transaction can be successfully processed and submitted to a base
+        //   node before the next is created.
         let mut transaction_service = self.get_transaction_service();
         let batch_result = loop {
             let tx_result = transaction_service
@@ -1258,7 +1263,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         ..Default::default()
                     },
                     OutputFeatures::default(),
-                    fee_per_gram.into(),
+                    fee,
                     payment_id.clone(),
                 )
                 .await;

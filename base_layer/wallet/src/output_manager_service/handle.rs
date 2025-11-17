@@ -26,6 +26,7 @@ use tari_common_types::{
     tari_address::TariAddress,
     transaction::TxId,
     types::{CompressedCommitment, CompressedPublicKey, FixedHash, HashOutput},
+    wallet_types::FeeType,
 };
 use tari_script::{CompressedCheckSigSchnorrSignature, TariScript};
 use tari_service_framework::reply_channel::SenderService;
@@ -108,7 +109,7 @@ pub enum OutputManagerRequest {
         tx_id: TxId,
         selection_criteria: UtxoSelectionCriteria,
         output_features: Box<OutputFeatures>,
-        fee_per_gram: MicroMinotari,
+        fee: FeeType,
         script: TariScript,
         covenant: Covenant,
     },
@@ -617,7 +618,7 @@ where KM: TransactionKeyManagerInterface
         tx_id: TxId,
         utxo_selection: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee: FeeType,
         script: TariScript,
         covenant: Covenant,
     ) -> Result<TransactionBuilder<KM>, OutputManagerError> {
@@ -627,7 +628,7 @@ where KM: TransactionKeyManagerInterface
                 tx_id,
                 selection_criteria: utxo_selection,
                 output_features: Box::new(output_features),
-                fee_per_gram,
+                fee,
                 script,
                 covenant,
             })

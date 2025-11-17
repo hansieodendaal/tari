@@ -53,7 +53,7 @@ use tari_common_types::{
         PrivateKey,
         UncompressedPublicKey,
     },
-    wallet_types::WalletType,
+    wallet_types::{FeeType, WalletType},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_crypto::{
@@ -848,7 +848,7 @@ where
             TransactionServiceRequest::SendRangeLimitedCoinJoinTransaction {
                 selection_criteria,
                 output_features,
-                fee_per_gram,
+                fee,
                 payment_id,
             } => {
                 async {
@@ -856,7 +856,7 @@ where
                         .send_range_limited_coin_join(
                             selection_criteria,
                             *output_features,
-                            fee_per_gram,
+                            fee,
                             transaction_broadcast_join_handles,
                             payment_id,
                         )
@@ -2424,7 +2424,7 @@ where
         &mut self,
         selection_criteria: UtxoSelectionCriteria,
         output_features: OutputFeatures,
-        fee_per_gram: MicroMinotari,
+        fee: FeeType,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -2442,7 +2442,7 @@ where
                 temp_tx_id,
                 selection_criteria,
                 output_features.clone(),
-                fee_per_gram,
+                fee,
                 script,
                 covenant,
             )
@@ -2517,7 +2517,7 @@ where
         // Broadcast one-sided transaction
 
         let tx = finalized.transaction.clone();
-        let fee = finalized.fee;
+        let final_fee = finalized.fee;
         let change = finalized.change.clone().map(|change| vec![change]);
         self.resources
             .output_manager_service
@@ -2533,7 +2533,7 @@ where
                 self.resources.one_sided_tari_address.clone(),
                 dest_address.clone(),
                 amount_without_fee,
-                fee,
+                final_fee,
                 tx.clone(),
                 LegacyTransactionStatus::Completed,
                 Utc::now(),

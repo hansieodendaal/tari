@@ -41,6 +41,7 @@ use tari_common_types::{
         UncompressedCommitment,
         UncompressedPublicKey,
     },
+    wallet_types::FeeType,
 };
 use tari_comms::types::CommsDHKE;
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
@@ -364,14 +365,14 @@ where
                 tx_id,
                 selection_criteria,
                 output_features,
-                fee_per_gram,
+                fee,
                 script,
                 covenant,
             } => self
                 .prepare_range_limited_coin_join_transaction_to_send(
                     tx_id,
                     selection_criteria,
-                    fee_per_gram,
+                    fee,
                     *output_features,
                     script,
                     covenant,
@@ -994,7 +995,7 @@ where
         &mut self,
         tx_id: TxId,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee: FeeType,
         recipient_output_features: OutputFeatures,
         recipient_script: TariScript,
         recipient_covenant: Covenant,
@@ -1010,7 +1011,7 @@ where
         debug!(
             target: LOG_TARGET,
             "Preparing to send range limited coin join transaction - TxId: {tx_id}, target_minimum_amount: \
-            {target_minimum_amount}, fee per gram: {fee_per_gram}, selection: {selection_criteria}"
+            {target_minimum_amount}, fee: {fee}, selection: {selection_criteria}"
         );
         let features_and_scripts_byte_size = self
             .resources
@@ -1029,7 +1030,7 @@ where
             );
 
         let input_selection = self
-            .select_utxos_for_range_limited_coin_join(selection_criteria, fee_per_gram, features_and_scripts_byte_size)
+            .select_utxos_for_range_limited_coin_join(selection_criteria, fee, features_and_scripts_byte_size)
             .await?;
 
         let mut builder = TransactionBuilder::new(
@@ -1051,7 +1052,7 @@ where
             tx_id,
             input_selection.total_value(),
             input_selection.total_value() - input_selection.as_final_fee(),
-            fee_per_gram,
+            fee,
             input_selection.as_final_fee(),
             input_selection.num_selected(),
         );
@@ -1921,7 +1922,7 @@ where
     async fn select_utxos_for_range_limited_coin_join(
         &mut self,
         selection_criteria: UtxoSelectionCriteria,
-        fee_per_gram: MicroMinotari,
+        fee: FeeType,
         total_output_features_and_scripts_byte_size: usize,
     ) -> Result<UtxoSelection, OutputManagerError> {
         let start = Instant::now();
@@ -1935,8 +1936,8 @@ where
                 })?;
         debug!(
             target: LOG_TARGET,
-            "select_utxos_for_range_limited_coin_join target_minimum_amount: {}, fee_per_gram: \
-            {fee_per_gram}, output_features_and_scripts_byte_size:  {total_output_features_and_scripts_byte_size}, \
+            "select_utxos_for_range_limited_coin_join target_minimum_amount: {}, fee: {fee}, \
+            output_features_and_scripts_byte_size:  {total_output_features_and_scripts_byte_size}, \
             selection_criteria: {selection_criteria:?}",
             range_limit_criteria.target_minimum_amount
         );
@@ -1976,18 +1977,24 @@ where
             });
         }
 
-        let fee_calc = self.get_fee_calc();
-        let fee_without_change = fee_calc.calculate(
-            fee_per_gram,
-            1,
-            utxos.len(),
-            1,
-            total_output_features_and_scripts_byte_size,
-        );
+        let fee_without_change = match fee {
+            FeeType::TotalFee(fee) => MicroMinotari(fee),
+            FeeType::FeePerGram(fee_per_gram) => {
+                let fee_calc = self.get_fee_calc();
+                fee_calc.calculate(
+                    MicroMinotari(fee_per_gram),
+                    1,
+                    utxos.len(),
+                    1,
+                    total_output_features_and_scripts_byte_size,
+                )
+            },
+        };
+
         if fee_without_change > total_value {
             return Err(OutputManagerError::RangeLimitError {
                 reason: format!(
-                    "Minimum fee exceeds total value in range: {} vs. {}",
+                    "Fee exceeds total value in range: {} vs. {}",
                     fee_without_change, total_value
                 ),
                 range_exhausted: false,
