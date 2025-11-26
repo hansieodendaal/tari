@@ -141,7 +141,7 @@ use minotari_wallet::{
     transaction_service::{
         error::TransactionServiceError,
         handle::TransactionServiceHandle,
-        storage::models::{self, WalletTransaction},
+        storage::models::{self, CompletedTransaction, WalletTransaction},
     },
     WalletKeyManager,
     WalletSqlite,
@@ -156,6 +156,7 @@ use tari_common_types::{
         CompressedCommitment,
         CompressedPublicKey,
         CompressedSignature,
+        FixedHash,
         PrivateKey,
         SignatureWithDomain,
     },
@@ -339,6 +340,7 @@ impl WalletGrpcServer {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 #[tonic::async_trait]
 impl wallet_server::Wallet for WalletGrpcServer {
     type GetAllCompletedTransactionsStreamStream = mpsc::Receiver<Result<GetCompletedTransactionsResponse, Status>>;
@@ -1540,7 +1542,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(receiver))
     }
 
-    #[allow(clippy::too_many_lines)]
     async fn get_completed_transactions(
         &self,
         request: Request<GetCompletedTransactionsRequest>,
@@ -1635,23 +1636,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         raw_payment_id: txn.payment_id.to_bytes(),
                         user_payment_id: txn.payment_id.payment_id_as_bytes(),
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
+                        #[allow(deprecated)]
                         output_commitments,
                         input_commitments,
+                        #[allow(deprecated)]
                         payment_references_sent: txn
                             .calculate_sent_payment_references()
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
+                        #[allow(deprecated)]
                         payment_references_received: txn
                             .calculate_received_payment_references()
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
+                        #[allow(deprecated)]
                         payment_references_change: txn
                             .calculate_change_payment_references()
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
+                        output_commitments_info: get_transaction_output_commitments_info(txn),
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -1773,23 +1779,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     raw_payment_id: txn.payment_id.to_bytes(),
                     user_payment_id: txn.payment_id.payment_id_as_bytes(),
                     mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    #[allow(deprecated)]
                     output_commitments,
                     input_commitments,
+                    #[allow(deprecated)]
                     payment_references_sent: txn
                         .calculate_sent_payment_references()
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
+                    #[allow(deprecated)]
                     payment_references_received: txn
                         .calculate_received_payment_references()
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
+                    #[allow(deprecated)]
                     payment_references_change: txn
                         .calculate_change_payment_references()
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
+                    output_commitments_info: get_transaction_output_commitments_info(&txn),
                 });
             }
 
@@ -1934,23 +1945,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         raw_payment_id: txn.payment_id.to_bytes(),
                         user_payment_id: txn.payment_id.payment_id_as_bytes(),
                         mined_in_block_height: txn.mined_height.unwrap_or(0),
+                        #[allow(deprecated)]
                         output_commitments,
                         input_commitments,
+                        #[allow(deprecated)]
                         payment_references_sent: txn
                             .calculate_sent_payment_references()
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
+                        #[allow(deprecated)]
                         payment_references_received: txn
                             .calculate_received_payment_references()
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
+                        #[allow(deprecated)]
                         payment_references_change: txn
                             .calculate_change_payment_references()
                             .into_iter()
                             .map(|pr| pr.to_vec())
                             .collect(),
+                        output_commitments_info: get_transaction_output_commitments_info(&txn),
                     };
 
                     let response = GetCompletedTransactionsResponse {
@@ -2076,23 +2092,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 raw_payment_id: txn.payment_id.to_bytes(),
                 user_payment_id: txn.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: txn.mined_height.unwrap_or(0),
+                #[allow(deprecated)]
                 output_commitments,
                 input_commitments,
+                #[allow(deprecated)]
                 payment_references_sent: txn
                     .calculate_sent_payment_references()
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
+                #[allow(deprecated)]
                 payment_references_received: txn
                     .calculate_received_payment_references()
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
+                #[allow(deprecated)]
                 payment_references_change: txn
                     .calculate_change_payment_references()
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
+                output_commitments_info: get_transaction_output_commitments_info(txn),
             });
         }
 
@@ -2612,23 +2633,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     raw_payment_id: txn.payment_id.to_bytes(),
                     user_payment_id: txn.payment_id.payment_id_as_bytes(),
                     mined_in_block_height: txn.mined_height.unwrap_or(0),
+                    #[allow(deprecated)]
                     output_commitments,
                     input_commitments,
+                    #[allow(deprecated)]
                     payment_references_sent: txn
                         .calculate_sent_payment_references()
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
+                    #[allow(deprecated)]
                     payment_references_received: txn
                         .calculate_received_payment_references()
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
+                    #[allow(deprecated)]
                     payment_references_change: txn
                         .calculate_change_payment_references()
                         .into_iter()
                         .map(|pr| pr.to_vec())
                         .collect(),
+                    output_commitments_info: get_transaction_output_commitments_info(&txn),
                 };
                 Ok(Response::new(GetPaymentByReferenceResponse {
                     transaction: Some(transaction_info),
@@ -3086,11 +3112,16 @@ fn convert_wallet_transaction_into_transaction_info(
                 raw_payment_id: tx.payment_id.to_bytes(),
                 user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: 0,
+                #[allow(deprecated)]
                 output_commitments,
                 input_commitments: vec![],
+                #[allow(deprecated)]
                 payment_references_sent: vec![],
+                #[allow(deprecated)]
                 payment_references_received: vec![],
+                #[allow(deprecated)]
                 payment_references_change: vec![],
+                output_commitments_info: vec![],
             }
         },
         PendingOutbound(tx) => {
@@ -3108,6 +3139,7 @@ fn convert_wallet_transaction_into_transaction_info(
                     vec![]
                 },
             };
+
             TransactionInfo {
                 tx_id: tx.tx_id.into(),
                 source_address: wallet_address.to_vec(),
@@ -3122,11 +3154,16 @@ fn convert_wallet_transaction_into_transaction_info(
                 raw_payment_id: tx.payment_id.to_bytes(),
                 user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: 0,
+                #[allow(deprecated)]
                 output_commitments,
                 input_commitments,
+                #[allow(deprecated)]
                 payment_references_sent: vec![],
+                #[allow(deprecated)]
                 payment_references_received: vec![],
+                #[allow(deprecated)]
                 payment_references_change: vec![],
+                output_commitments_info: vec![],
             }
         },
         Completed(tx) => {
@@ -3168,24 +3205,118 @@ fn convert_wallet_transaction_into_transaction_info(
                 raw_payment_id: tx.payment_id.to_bytes(),
                 user_payment_id: tx.payment_id.payment_id_as_bytes(),
                 mined_in_block_height: tx.mined_height.unwrap_or(0),
+                #[allow(deprecated)]
                 output_commitments: output_commitments.clone(),
                 input_commitments,
+                #[allow(deprecated)]
                 payment_references_sent: tx
                     .calculate_sent_payment_references()
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
+                #[allow(deprecated)]
                 payment_references_received: tx
                     .calculate_received_payment_references()
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
+                #[allow(deprecated)]
                 payment_references_change: tx
                     .calculate_change_payment_references()
                     .into_iter()
                     .map(|pr| pr.to_vec())
                     .collect(),
+                output_commitments_info: get_transaction_output_commitments_info(&tx),
             }
         },
+    }
+}
+
+struct CommitmentInfo {
+    commitment: Option<CompressedCommitment>,
+    hash: FixedHash,
+}
+
+fn get_transaction_output_commitments_info(txn: &CompletedTransaction) -> Vec<tari_rpc::CommitmentInfo> {
+    let input_artefacts = txn
+        .transaction
+        .body
+        .inputs()
+        .iter()
+        .map(|o| CommitmentInfo {
+            commitment: if let Ok(commitment) = o.commitment().cloned() {
+                Some(commitment)
+            } else {
+                warn!(target: LOG_TARGET, "Expected to find a commitment for output '{}'", o.output_hash());
+                None
+            },
+            hash: o.output_hash(),
+        })
+        .collect::<Vec<_>>();
+    let output_artefacts = txn
+        .transaction
+        .body
+        .outputs()
+        .iter()
+        .map(|o| CommitmentInfo {
+            commitment: Some(o.commitment.clone()),
+            hash: o.hash(),
+        })
+        .collect::<Vec<_>>();
+    let all_artefacts = input_artefacts.into_iter().chain(output_artefacts).collect::<Vec<_>>();
+
+    let mut output_commitments_info = Vec::with_capacity(
+        txn.sent_output_hashes.len() + txn.received_output_hashes.len() + txn.change_output_hashes.len(),
+    );
+    for hash in &txn.sent_output_hashes {
+        output_commitments_info.push(tari_rpc::CommitmentInfo {
+            hash: hash.to_vec(),
+            commitment: get_commitment(&all_artefacts, hash),
+            payment_reference: get_payment_reference(txn, hash),
+            category: tari_rpc::OutputCategory::Sent as i32,
+        });
+    }
+    for hash in &txn.received_output_hashes {
+        output_commitments_info.push(tari_rpc::CommitmentInfo {
+            hash: hash.to_vec(),
+            commitment: get_commitment(&all_artefacts, hash),
+            payment_reference: get_payment_reference(txn, hash),
+            category: tari_rpc::OutputCategory::Received as i32,
+        });
+    }
+    for hash in &txn.change_output_hashes {
+        output_commitments_info.push(tari_rpc::CommitmentInfo {
+            hash: hash.to_vec(),
+            commitment: get_commitment(&all_artefacts, hash),
+            payment_reference: get_payment_reference(txn, hash),
+            category: tari_rpc::OutputCategory::Change as i32,
+        });
+    }
+
+    output_commitments_info
+}
+
+fn get_commitment(all_artefacts: &[CommitmentInfo], hash: &FixedHash) -> Vec<u8> {
+    if let Some(output) = all_artefacts.iter().find(|&val| &val.hash == hash) {
+        if let Some(commitment) = &output.commitment {
+            commitment.as_bytes().to_vec()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    }
+}
+
+fn get_payment_reference(txn: &CompletedTransaction, hash: &FixedHash) -> Vec<u8> {
+    if txn.status.is_confirmed() {
+        {
+            txn.mined_in_block
+                .as_ref()
+                .map(|block_hash| generate_payment_reference(block_hash, hash).to_vec())
+                .unwrap_or_default()
+        }
+    } else {
+        Default::default()
     }
 }

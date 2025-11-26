@@ -1590,10 +1590,17 @@ service Wallet {
   // - **user_payment_id** (bytes): User-visible payment ID, if applicable.
   // - **mined_in_block_height** (uint64): Block height where the transaction was mined. Zero if not mined.
   // - **input_commitments** (repeated bytes): Commitments for transaction inputs.
-  // - **output_commitments** (repeated bytes): Commitments for transaction outputs.
-  // - **payment_references_sent** (repeated bytes): Metadata references associated with sent outputs.
-  // - **payment_references_received** (repeated bytes): Metadata references associated with received outputs.
-  // - **payment_references_change** (repeated bytes): Metadata references associated with change outputs.
+  // - **output_commitments** (repeated bytes): Commitments for transaction outputs. *(deprecated)*
+  // - **payment_references_sent** (repeated bytes): Metadata references associated with sent outputs. *(deprecated)*
+  // - **payment_references_received** (repeated bytes): Metadata references associated with received outputs. *(deprecated)*
+  // - **payment_references_change** (repeated bytes): Metadata references associated with change outputs. *(deprecated)*
+  // - **output_commitments_info** (repeated CommitmentInfo):
+  //     Contains details for each output commitment in the transaction.
+  //     Each CommitmentInfo includes:
+  //       - `hash` (bytes): The hash representing the output.
+  //       - `commitment` (bytes): The cryptographic commitment representing the output.
+  //       - `payment_reference` (bytes): The associated payment reference for the output.
+  //       - `category` (enum): The category of the output (`Sent`, `Received`, `Change`).
   //
   // ### Example JavaScript gRPC client usage:
   // ```javascript
@@ -1637,7 +1644,21 @@ service Wallet {
   //     "output_commitments": ["0x...", "0x..."],
   //     "payment_references_sent": ["0x...", "0x..."],
   //     "payment_references_received": [],
-  //     "payment_references_change": []
+  //     "payment_references_change": [],
+  //     "output_commitments_info": [
+  //       {
+  //         "hash": "0xa1b2c3...",
+  //         "commitment": "0xabcdef...",
+  //         "payment_reference": "0x123456...",
+  //         "category": "Sent"
+  //       },
+  //       {
+    //       "hash": "0xf4e3d2c1...",
+  //         "commitment": "0xghijkl...",
+  //         "payment_reference": "0x789abc...",
+  //         "category": "Change"
+  //       }
+  //     ]
   //   }
   // }
   // ```
@@ -2130,10 +2151,24 @@ message TransactionInfo {
   uint64 mined_in_block_height = 13;
   bytes user_payment_id = 14;
   repeated bytes input_commitments = 15;
-  repeated bytes output_commitments = 16;
-  repeated bytes payment_references_sent = 17;
-  repeated bytes payment_references_received = 18;
-  repeated bytes payment_references_change = 19;
+  repeated bytes output_commitments = 16 [deprecated = true];
+  repeated bytes payment_references_sent = 17 [deprecated = true];
+  repeated bytes payment_references_received = 18 [deprecated = true];
+  repeated bytes payment_references_change = 19 [deprecated = true];
+  repeated CommitmentInfo output_commitments_info = 20;
+}
+
+message CommitmentInfo {
+  bytes hash = 1;
+  bytes commitment = 2;
+  bytes payment_reference = 3;
+  OutputCategory category = 4;
+}
+
+enum OutputCategory {
+  OUTPUT_CATEGORY_SENT = 0;
+  OUTPUT_CATEGORY_RECEIVED = 1;
+  OUTPUT_CATEGORY_CHANGE = 2;
 }
 
 enum TransactionDirection {
